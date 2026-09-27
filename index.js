@@ -1,6 +1,6 @@
 // ============================================================
 // البوت - ثيم برتقالي وأسود - خلفية ترحيب - MongoDB
-// نظام رتب تفاعلي بقائمة منسدلة - إصلاح الإيموجي
+// نظام رتب تفاعلي بقائمة منسدلة (تبديل) - الاسم فقط
 // ============================================================
 
 const {
@@ -50,7 +50,6 @@ const THEME = {
   WARN: 0xfaa61a,
 };
 
-// خط عربي (اختياري)
 try {
   // GlobalFonts.registerFromPath('./fonts/NotoNaskhArabic-Bold.ttf', 'NotoArabic');
 } catch (e) {}
@@ -356,9 +355,7 @@ function sanitizeChannelName(name) {
 
 function isValidEmoji(emoji) {
   if (!emoji || typeof emoji !== 'string') return false;
-  // إيموجي مخصص: <:name:id> أو <a:name:id>
   if (/^<a?:\w{2,32}:\d{17,20}>$/.test(emoji)) return true;
-  // إيموجي Unicode عادي
   try {
     const emojiRegex = /^(\p{Emoji_Presentation}|\p{Emoji}\uFE0F|\p{Extended_Pictographic})(\u200D(\p{Emoji_Presentation}|\p{Emoji}\uFE0F|\p{Extended_Pictographic}))*$/u;
     return emojiRegex.test(emoji) && emoji.length <= 8;
@@ -369,12 +366,10 @@ function isValidEmoji(emoji) {
 
 function parseEmoji(emoji) {
   if (!emoji || typeof emoji !== 'string') return null;
-  // إيموجي مخصص
   const customMatch = emoji.match(/^<a?:(\w{2,32}):(\d{17,20})>$/);
   if (customMatch) {
     return { name: customMatch[1], id: customMatch[2] };
   }
-  // إيموجي Unicode
   if (isValidEmoji(emoji)) {
     return emoji;
   }
@@ -390,7 +385,6 @@ async function getSelfRoles(guildId) {
 }
 
 async function addSelfRole(guildId, roleId, label, emoji = '🎭', image = null, description = '') {
-  // التحقق من صحة الإيموجي قبل الحفظ
   if (!parseEmoji(emoji)) {
     emoji = '🎭';
   }
@@ -417,7 +411,6 @@ async function removeSelfRole(guildId, roleId) {
 }
 
 async function updateSelfRole(guildId, roleId, data) {
-  // التحقق من الإيموجي إذا كان يتم تحديثه
   if (data.emoji !== undefined && !parseEmoji(data.emoji)) {
     data.emoji = '🎭';
   }
@@ -1025,9 +1018,7 @@ client.on('messageCreate', async (message) => {
         return;
       }
 
-      // ============================================================
-      // ===== أمر إصلاح الرتب القديمة (مؤقت) =====
-      // ============================================================
+      // ===== أمر إصلاح الرتب =====
       if (cmd === 'اصلاح_رتب') {
         if (!OWNER_ID || message.author.id !== OWNER_ID) {
           sentReply = await message.reply('❌ هذا الأمر للمالك فقط.');
@@ -1106,7 +1097,7 @@ client.on('messageCreate', async (message) => {
             const embed = new EmbedBuilder()
               .setTitle('🎭 إدارة الرتب الذاتية')
               .setColor(THEME.ORANGE)
-              .setDescription('نظام يسمح للأعضاء باختيار رتبهم بأنفسهم من قائمة منسدلة.')
+              .setDescription('نظام يسمح للأعضاء باختيار رتبهم بأنفسهم من قائمة منسدلة (Toggle).')
               .addFields(
                 { name: '➕ إضافة رتبة', value: '`!تعيين رتب اضافة @رتبة [الاسم] [الايموجي] [رابط_صورة]`', inline: false },
                 { name: '✏️ تعديل رتبة', value: '`!تعيين رتب تعديل @رتبة [الاسم/الايموجي/الصورة/الوصف] [القيمة]`', inline: false },
@@ -1139,7 +1130,6 @@ client.on('messageCreate', async (message) => {
             const image = rest[2] && rest[2].match(/^https?:\/\//) ? rest[2] : null;
             const description = rest.slice(image ? 3 : 2).join(' ') || '';
 
-            // التحقق من صحة الإيموجي
             if (!parseEmoji(emoji)) {
               console.log(`⚠️ إيموجي غير صالح: "${emoji}" - سيتم استخدام 🎭`);
               emoji = '🎭';
@@ -1164,7 +1154,7 @@ client.on('messageCreate', async (message) => {
               .setColor(THEME.ORANGE)
               .addFields(
                 { name: '🎭 الرتبة', value: `${role}`, inline: true },
-                { name: '📝 الاسم', value: label, inline: true },
+                { name: '📝 الاسم الظاهر', value: label, inline: true },
                 { name: '😀 الإيموجي', value: emoji, inline: true }
               )
               .setFooter({ text: 'استخدم !تعيين رتب بانل لإرسال القائمة' });
@@ -1210,7 +1200,7 @@ client.on('messageCreate', async (message) => {
             if (option === 'الاسم') updateData.label = newValue;
             else if (option === 'الايموجي') {
               if (!parseEmoji(newValue)) {
-                sentReply = await message.reply('⚠️ الإيموجي غير صالح. استخدم إيموجي Unicode عادي أو إيموجي مخصص من هذا السيرفر.');
+                sentReply = await message.reply('⚠️ الإيموجي غير صالح.');
                 deleteAfter(sentReply);
                 return;
               }
@@ -1219,7 +1209,7 @@ client.on('messageCreate', async (message) => {
             else if (option === 'الصورة') updateData.image = newValue;
             else if (option === 'الوصف') updateData.description = newValue;
             else {
-              sentReply = await message.reply('⚠️ خيار غير معروف. الخيارات: `الاسم` `الايموجي` `الصورة` `الوصف`');
+              sentReply = await message.reply('⚠️ خيار غير معروف.');
               deleteAfter(sentReply);
               return;
             }
@@ -1281,7 +1271,7 @@ client.on('messageCreate', async (message) => {
 
             for (const r of selfRoles) {
               const role = message.guild.roles.cache.get(r.roleId);
-              let value = `**الاسم:** ${r.label}\n**الايموجي:** ${r.emoji}\n**الرتبة:** ${role ? role.toString() : '⚠️ محذوفة'}`;
+              let value = `**الاسم الظاهر:** ${r.label}\n**الايموجي:** ${r.emoji}\n**الرتبة:** ${role ? role.toString() : '⚠️ محذوفة'}`;
               if (r.description) value += `\n**الوصف:** ${r.description}`;
               if (r.image) value += `\n**الصورة:** [رابط](${r.image})`;
               embed.addFields({ name: `${r.emoji} ${r.label}`, value, inline: false });
@@ -1349,7 +1339,9 @@ client.on('messageCreate', async (message) => {
             return;
           }
 
-          // ===== بانل =====
+          // ============================================================
+          // ===== بانل (بدون زر حذف الكل - نظام التبديل) =====
+          // ============================================================
           if (action === 'بانل') {
             const selfRoles = await getSelfRoles(guildId);
             if (!selfRoles.length) {
@@ -1359,26 +1351,25 @@ client.on('messageCreate', async (message) => {
             }
 
             const targetChannel = message.mentions.channels.first() || message.channel;
-            const panelText = config.rolesPanelText || 'اختر الرتب التي تناسبك من القائمة المنسدلة أدناه. يمكنك اختيار أكثر من رتبة، وستُضاف إليك فوراً. 🎭';
+            const panelText = config.rolesPanelText || 'اختر الرتب التي تناسبك من القائمة المنسدلة أدناه.\n\n**🖱️ اضغط على الرتبة لإضافتها، واضغط مرة أخرى لإزالتها.**';
             const panelImage = config.rolesImage || null;
 
             const embed = new EmbedBuilder()
               .setTitle('🎭 رتب الاختيار الذاتي')
               .setDescription(panelText)
               .setColor(THEME.ORANGE)
-              .setFooter({ text: 'اختر رتبة من القائمة المنسدلة لإضافتها أو إزالتها.' });
+              .setFooter({ text: 'اضغط على الرتبة لإضافتها أو إزالتها من حسابك.' });
 
             if (panelImage) embed.setImage(panelImage);
             else if (generalImage) embed.setThumbnail(generalImage);
 
-            // بناء القائمة المنسدلة مع التحقق من الإيموجي
+            // القائمة المنسدلة - الاسم فقط بدون منشن
             const options = selfRoles.slice(0, 25).map(r => {
               const opt = {
-                label: r.label.slice(0, 100),
+                label: r.label.slice(0, 100), // الاسم فقط
                 value: r.roleId,
               };
 
-              // التحقق من الإيموجي قبل الإضافة
               const parsedEmoji = parseEmoji(r.emoji);
               if (parsedEmoji) {
                 opt.emoji = parsedEmoji;
@@ -1390,24 +1381,18 @@ client.on('messageCreate', async (message) => {
               return opt;
             });
 
+            // min=1 max=1: اختيار واحد فقط في كل مرة (Toggle)
             const row = new ActionRowBuilder().addComponents(
               new StringSelectMenuBuilder()
-                .setCustomId('self_roles_menu')
-                .setPlaceholder('🎭 اختر الرتب...')
-                .setMinValues(0)
-                .setMaxValues(options.length)
+                .setCustomId('self_roles_toggle')
+                .setPlaceholder('🎭 اختر رتبة...')
+                .setMinValues(1)
+                .setMaxValues(1)
                 .addOptions(options)
             );
 
-            const clearRow = new ActionRowBuilder().addComponents(
-              new ButtonBuilder()
-                .setCustomId('self_roles_clear')
-                .setLabel('🗑️ إزالة كل الرتب')
-                .setStyle(ButtonStyle.Danger)
-            );
-
             try {
-              await targetChannel.send({ embeds: [embed], components: [row, clearRow] });
+              await targetChannel.send({ embeds: [embed], components: [row] });
               logToChannel(guildId, { title: '📢 إرسال بانل الرتب', color: THEME.ORANGE, description: `**${message.author}** أرسل بانل الرتب في ${targetChannel}` });
               sentReply = await message.reply({ embeds: [new EmbedBuilder().setColor(THEME.ORANGE).setDescription(`✅ تم إرسال البانل في ${targetChannel}`)] });
               deleteAfter(sentReply);
@@ -1429,13 +1414,11 @@ client.on('messageCreate', async (message) => {
           const channel = message.mentions.channels.first();
           if (!channel) {
             await updateGuildConfig(guildId, { welcomeChannel: null });
-            logToChannel(guildId, { title: '⚙️ إعدادات', color: THEME.ORANGE, description: `**${message.author}** ألغى قناة الترحيب.` });
             sentReply = await message.reply('✅ تم إلغاء تحديد قناة الترحيب.');
             deleteAfter(sentReply);
             return;
           }
           await updateGuildConfig(guildId, { welcomeChannel: channel.id });
-          logToChannel(guildId, { title: '⚙️ إعدادات', color: THEME.ORANGE, description: `**${message.author}** عيّن قناة الترحيب إلى ${channel}.` });
           sentReply = await message.reply(`✅ تم تعيين قناة الترحيب إلى ${channel}`);
           deleteAfter(sentReply);
           return;
@@ -1448,7 +1431,6 @@ client.on('messageCreate', async (message) => {
             return;
           }
           await updateGuildConfig(guildId, { welcomeMessage: value });
-          logToChannel(guildId, { title: '⚙️ إعدادات', color: THEME.ORANGE, description: `**${message.author}** غيّر نص الترحيب إلى:\n${value}` });
           sentReply = await message.reply(`✅ تم تعيين نص الترحيب:\n${value}`);
           deleteAfter(sentReply);
           return;
@@ -2922,7 +2904,7 @@ client.on('messageCreate', async (message) => {
 });
 
 // ============================================================
-// ========== معالج التفاعلات ==========
+// ========== معالج التفاعلات ============
 // ============================================================
 
 client.on('interactionCreate', async (interaction) => {
@@ -3067,9 +3049,9 @@ client.on('interactionCreate', async (interaction) => {
     }
 
     // ============================================================
-    // ===== القائمة المنسدلة للرتب الذاتية =====
+    // ===== القائمة المنسدلة للرتب الذاتية (Toggle) =====
     // ============================================================
-    if (interaction.isStringSelectMenu() && interaction.customId === 'self_roles_menu') {
+    if (interaction.isStringSelectMenu() && interaction.customId === 'self_roles_toggle') {
       await interaction.deferReply({ ephemeral: true });
 
       if (!interaction.guild.members.me.permissions.has(PermissionsBitField.Flags.ManageRoles)) {
@@ -3078,108 +3060,63 @@ client.on('interactionCreate', async (interaction) => {
         });
       }
 
-      const guildId = interaction.guild.id;
-      const member = interaction.member;
-      const selfRoles = await getSelfRoles(guildId);
-      const availableRoleIds = new Set(selfRoles.map(r => r.roleId));
-
-      const selectedRoleIds = interaction.values;
-      const currentRoleIds = member.roles.cache
-        .filter(r => availableRoleIds.has(r.id))
-        .map(r => r.id);
-
-      const toAdd = selectedRoleIds.filter(id => !currentRoleIds.includes(id));
-      const toRemove = currentRoleIds.filter(id => !selectedRoleIds.includes(id));
-
-      const added = [];
-      const removed = [];
-      const failed = [];
-
-      for (const roleId of toAdd) {
-        const role = interaction.guild.roles.cache.get(roleId);
-        if (!role) continue;
-        if (role.position >= interaction.guild.members.me.roles.highest.position) {
-          failed.push(`${role.name} (أعلى من رتبتي)`);
-          continue;
-        }
-        try {
-          await member.roles.add(role, 'اختيار ذاتي للرتب');
-          added.push(role.name);
-        } catch (e) {
-          failed.push(role.name);
-        }
+      const selectedRoleId = interaction.values[0];
+      const role = interaction.guild.roles.cache.get(selectedRoleId);
+      if (!role) {
+        return interaction.editReply({
+          embeds: [new EmbedBuilder().setColor(THEME.BLACK).setDescription('❌ الرتبة غير موجودة.')]
+        });
       }
 
-      for (const roleId of toRemove) {
-        const role = interaction.guild.roles.cache.get(roleId);
-        if (!role) continue;
-        try {
+      // التحقق من أن الرتبة مسجلة في النظام
+      const selfRole = await SelfRole.findOne({ guildId: interaction.guild.id, roleId: selectedRoleId });
+      if (!selfRole) {
+        return interaction.editReply({
+          embeds: [new EmbedBuilder().setColor(THEME.BLACK).setDescription('❌ هذه الرتبة غير مسجلة في النظام.')]
+        });
+      }
+
+      const member = interaction.member;
+
+      // التحقق من موضع الرتبة
+      if (role.position >= interaction.guild.members.me.roles.highest.position) {
+        return interaction.editReply({
+          embeds: [new EmbedBuilder().setColor(THEME.BLACK).setDescription(`❌ رتبة **${role.name}** أعلى من رتبتي، لا أستطيع إدارتها.`)]
+        });
+      }
+
+      try {
+        if (member.roles.cache.has(role.id)) {
+          // إزالة الرتبة
           await member.roles.remove(role, 'إزالة ذاتية للرتب');
-          removed.push(role.name);
-        } catch (e) {}
-      }
-
-      let desc = '';
-      if (added.length) desc += `**✅ رتب تمت إضافتها:**\n${added.map(r => `• ${r}`).join('\n')}\n\n`;
-      if (removed.length) desc += `**🗑️ رتب تمت إزالتها:**\n${removed.map(r => `• ${r}`).join('\n')}\n\n`;
-      if (failed.length) desc += `**⚠️ رتب فشلت:**\n${failed.map(r => `• ${r}`).join('\n')}\n\n`;
-      if (!desc) desc = '📭 لم يتم إجراء أي تغيير.';
-
-      const embed = new EmbedBuilder()
-        .setTitle('🎭 تم تحديث رتبك')
-        .setColor(THEME.ORANGE)
-        .setDescription(desc)
-        .setTimestamp()
-        .setFooter({ text: interaction.guild.name });
-
-      return interaction.editReply({ embeds: [embed] });
-    }
-
-    // ===== زر إزالة كل الرتب =====
-    if (interaction.isButton() && interaction.customId === 'self_roles_clear') {
-      await interaction.deferReply({ ephemeral: true });
-
-      if (!interaction.guild.members.me.permissions.has(PermissionsBitField.Flags.ManageRoles)) {
+          return interaction.editReply({
+            embeds: [new EmbedBuilder()
+              .setTitle('🗑️ تم إزالة الرتبة')
+              .setColor(THEME.ORANGE)
+              .setDescription(`تم إزالة رتبة **${selfRole.emoji} ${selfRole.label}** من حسابك.\n\n> اضغط مرة أخرى لإضافتها.`)
+              .setTimestamp()
+              .setFooter({ text: interaction.guild.name })
+            ]
+          });
+        } else {
+          // إضافة الرتبة
+          await member.roles.add(role, 'اختيار ذاتي للرتب');
+          return interaction.editReply({
+            embeds: [new EmbedBuilder()
+              .setTitle('✅ تم إضافة الرتبة')
+              .setColor(THEME.ORANGE)
+              .setDescription(`تم إضافة رتبة **${selfRole.emoji} ${selfRole.label}** إلى حسابك.\n\n> اضغط مرة أخرى لإزالتها.`)
+              .setTimestamp()
+              .setFooter({ text: interaction.guild.name })
+            ]
+          });
+        }
+      } catch (err) {
+        console.error('❌ خطأ في تبديل الرتبة:', err);
         return interaction.editReply({
-          embeds: [new EmbedBuilder().setColor(THEME.BLACK).setDescription('❌ لا أملك صلاحية إدارة الرتب.')]
+          embeds: [new EmbedBuilder().setColor(THEME.BLACK).setDescription(`❌ حدث خطأ: ${err.message}`)]
         });
       }
-
-      const guildId = interaction.guild.id;
-      const member = interaction.member;
-      const selfRoles = await getSelfRoles(guildId);
-      const availableRoleIds = new Set(selfRoles.map(r => r.roleId));
-
-      const currentRoleIds = member.roles.cache
-        .filter(r => availableRoleIds.has(r.id))
-        .map(r => r.id);
-
-      if (!currentRoleIds.length) {
-        return interaction.editReply({
-          embeds: [new EmbedBuilder().setColor(THEME.BLACK).setDescription('📭 لا تملك أي رتب من هذا النظام حالياً.')]
-        });
-      }
-
-      const removed = [];
-      for (const roleId of currentRoleIds) {
-        const role = interaction.guild.roles.cache.get(roleId);
-        if (!role) continue;
-        try {
-          await member.roles.remove(role, 'إزالة كل الرتب الذاتية');
-          removed.push(role.name);
-        } catch (e) {}
-      }
-
-      const embed = new EmbedBuilder()
-        .setTitle('🗑️ تم إزالة كل رتبك')
-        .setColor(THEME.ORANGE)
-        .setDescription(removed.length
-          ? `تم إزالة الرتب التالية:\n${removed.map(r => `• ${r}`).join('\n')}`
-          : '📭 لم يتم إزالة أي رتبة.'
-        )
-        .setTimestamp();
-
-      return interaction.editReply({ embeds: [embed] });
     }
 
     // ===== زر تغيير الاسم =====
