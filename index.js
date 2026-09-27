@@ -1,7 +1,7 @@
 // ============================================================
 // البوت - ثيم برتقالي وأسود - خلفية ترحيب - MongoDB
 // نظام رتب تفاعلي بقائمة منسدلة (تبديل) - الاسم فقط
-// + خيار إعادة تعيين داخل القائمة المنسدلة
+// + إعادة تعيين + تقييمات ترسل لروم + بانل اقتراحات مخصص
 // ============================================================
 
 const {
@@ -89,6 +89,10 @@ const ConfigSchema = new mongoose.Schema({
   suggestionsDescription: { type: String, default: 'هل لديك فكرة لتطوير السيرفر؟ شاركنا اقتراحك!' },
   suggestionsColor: { type: String, default: '#ff6b00' },
   suggestionsImage: String,
+  suggestionsPanelTitle: { type: String, default: '💡 قناة الاقتراحات' },
+  suggestionsPanelText: { type: String, default: 'هل لديك فكرة لتطوير السيرفر؟ شاركنا اقتراحك!\n\n**🖱️ اضغط على الزر أدناه لتقديم اقتراحك.**' },
+  suggestionsPanelImage: String,
+  suggestionsPanelButtonText: { type: String, default: '📝 إرسال اقتراحك' },
   ticketRatingEnabled: { type: Boolean, default: true },
   ticketRatingChannel: String,
 }, { timestamps: true });
@@ -436,8 +440,6 @@ async function buildSelfRolesPanel(guildId, guild, config) {
   if (panelImage) embed.setImage(panelImage);
   else if (generalImage) embed.setThumbnail(generalImage);
 
-  // القائمة المنسدلة - الاسم فقط بدون منشن
-  // نترك مكاناً لزر "إعادة تعيين" (24 رتبة كحد أقصى + خيار ريستارت = 25)
   const options = selfRoles.slice(0, 24).map(r => {
     const opt = {
       label: r.label.slice(0, 100),
@@ -450,7 +452,6 @@ async function buildSelfRolesPanel(guildId, guild, config) {
     return opt;
   });
 
-  // ✅ خيار إعادة التعيين داخل القائمة
   options.push({
     label: 'إعادة تعيين',
     value: 'SELF_ROLES_RESET',
@@ -465,6 +466,34 @@ async function buildSelfRolesPanel(guildId, guild, config) {
       .setMinValues(1)
       .setMaxValues(1)
       .addOptions(options)
+  );
+
+  return { embed, row };
+}
+
+// ========== دوال بناء بانل الاقتراحات ==========
+async function buildSuggestionPanel(config) {
+  const title = config.suggestionsPanelTitle || '💡 قناة الاقتراحات';
+  const text = config.suggestionsPanelText || 'هل لديك فكرة لتطوير السيرفر؟ شاركنا اقتراحك!\n\n**🖱️ اضغط على الزر أدناه لتقديم اقتراحك.**';
+  const image = config.suggestionsPanelImage || config.suggestionsImage || null;
+  const buttonText = config.suggestionsPanelButtonText || '📝 إرسال اقتراحك';
+  const color = parseInt(config.suggestionsColor?.replace('#', '') || 'ff6b00', 16);
+
+  const embed = new EmbedBuilder()
+    .setTitle(title)
+    .setDescription(text)
+    .setColor(color)
+    .setTimestamp()
+    .setFooter({ text: 'شاركنا أفكارك لتطوير السيرفر ✨' });
+
+  if (image) embed.setImage(image);
+
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId('suggest_modal')
+      .setLabel(buttonText)
+      .setStyle(ButtonStyle.Primary)
+      .setEmoji('📝')
   );
 
   return { embed, row };
@@ -953,7 +982,7 @@ client.on('messageCreate', async (message) => {
             { name: '📋 اللوق', value: '`تعيين سجلات #قناة` `اختبار_لوق`', inline: false },
             { name: '🤖 الأوتو لاين', value: '`تعيين اوتر_لاين #روم [نص]` `تعيين صورة_اوترلاين #روم رابط` `تعيين تفعيل_اوترلاين #روم` `تعيين تعطيل_اوترلاين #روم` `تعيين حذف_اوترلاين #روم`', inline: false },
             { name: '💬 الردود التلقائية', value: '`رد_تلقائي كلمة رد` `رد_تلقائي_صورة كلمة رد رابط` `حذف_رد_تلقائي كلمة` `عرض_الردود`', inline: false },
-            { name: '💡 الاقتراحات', value: '`بانل_اقتراح` (للمتحكمين)', inline: false },
+            { name: '💡 الاقتراحات', value: '`بانل_اقتراح عنوان=... نص=... صورة=...` (للمتحكمين)', inline: false },
             { name: '🎫 التذاكر', value: '`بانل` `عرض_تذكرة` `تعيين تذكرة` (للمتحكمين)', inline: false },
             { name: '⭐ التقييمات', value: '`تقييمات` (للمتحكمين)', inline: false },
             { name: '🎭 الرتب الذاتية', value: '`تعيين رتب` (للمتحكمين)', inline: false },
@@ -1071,7 +1100,6 @@ client.on('messageCreate', async (message) => {
         return;
       }
 
-      // ===== أمر إصلاح الرتب =====
       if (cmd === 'اصلاح_رتب') {
         if (!OWNER_ID || message.author.id !== OWNER_ID) {
           sentReply = await message.reply('❌ هذا الأمر للمالك فقط.');
@@ -1169,7 +1197,6 @@ client.on('messageCreate', async (message) => {
             return;
           }
 
-          // ===== إضافة =====
           if (action === 'اضافة' || action === 'إضافة') {
             const role = message.mentions.roles.first();
             if (!role) {
@@ -1224,7 +1251,6 @@ client.on('messageCreate', async (message) => {
             return;
           }
 
-          // ===== تعديل =====
           if (action === 'تعديل') {
             const role = message.mentions.roles.first();
             if (!role) {
@@ -1280,7 +1306,6 @@ client.on('messageCreate', async (message) => {
             return;
           }
 
-          // ===== حذف =====
           if (action === 'حذف') {
             const role = message.mentions.roles.first();
             if (!role) {
@@ -1308,7 +1333,6 @@ client.on('messageCreate', async (message) => {
             return;
           }
 
-          // ===== عرض =====
           if (action === 'عرض') {
             const selfRoles = await getSelfRoles(guildId);
             if (!selfRoles.length) {
@@ -1336,7 +1360,6 @@ client.on('messageCreate', async (message) => {
             return;
           }
 
-          // ===== صورة البانل =====
           if (action === 'صورة_بانل') {
             const image = rest.join(' ');
             if (!image) {
@@ -1357,7 +1380,6 @@ client.on('messageCreate', async (message) => {
             return;
           }
 
-          // ===== نص البانل =====
           if (action === 'نص_بانل') {
             const text = rest.join(' ');
             if (!text) {
@@ -1371,7 +1393,6 @@ client.on('messageCreate', async (message) => {
             return;
           }
 
-          // ===== ترتيب =====
           if (action === 'ترتيب') {
             const role = message.mentions.roles.first();
             const order = parseInt(rest[0]);
@@ -1392,9 +1413,6 @@ client.on('messageCreate', async (message) => {
             return;
           }
 
-          // ============================================================
-          // ===== بانل (نظام التبديل - الاسم فقط + زر إعادة تعيين) =====
-          // ============================================================
           if (action === 'بانل') {
             const panel = await buildSelfRolesPanel(guildId, message.guild, config);
             if (!panel) {
@@ -1758,7 +1776,7 @@ client.on('messageCreate', async (message) => {
             return;
           }
           await updateGuildConfig(guildId, { ticketRatingChannel: channel.id });
-          sentReply = await message.reply(`✅ تم تعيين قناة عرض التقييمات إلى ${channel}`);
+          sentReply = await message.reply(`✅ تم تعيين قناة عرض التقييمات إلى ${channel}\n\n> التقييمات ستُرسل إلى هذه القناة تلقائياً.`);
           deleteAfter(sentReply);
           return;
         }
@@ -1887,34 +1905,72 @@ client.on('messageCreate', async (message) => {
       }
 
       // ============================================================
-      // ===== اللوحات الدائمة =====
+      // ===== بانل الاقتراحات (مع دعم العنوان + النص + الصورة) =====
       // ============================================================
-
       if (cmd === 'بانل_اقتراح') {
         if (!(await hasPermission(message.member, guildId))) {
           sentReply = await message.reply('❌ تحتاج صلاحية متحكم.');
           deleteAfter(sentReply);
           return;
         }
-        const color = parseInt(config.suggestionsColor?.replace('#', '') || 'ff6b00', 16);
-        const embed = new EmbedBuilder()
-          .setTitle(config.suggestionsTitle || '💡 قناة الاقتراحات')
-          .setDescription(config.suggestionsDescription || 'هل لديك فكرة لتطوير السيرفر؟ شاركنا اقتراحك!')
-          .setColor(color)
-          .setTimestamp()
-          .setFooter({ text: `بواسطة ${message.author.tag}` });
-        if (config.suggestionsImage) embed.setImage(config.suggestionsImage);
-        if (generalImage) embed.setThumbnail(generalImage);
-        const row = new ActionRowBuilder().addComponents(
-          new ButtonBuilder()
-            .setCustomId('suggest_modal')
-            .setLabel('📝 تقديم اقتراح')
-            .setStyle(ButtonStyle.Primary)
-        );
-        await message.channel.send({ embeds: [embed], components: [row] });
-        logToChannel(guildId, { title: '💡 إنشاء لوحة اقتراحات', color: THEME.ORANGE, description: `**${message.author}** أنشأ لوحة الاقتراحات.` });
-        sentReply = await message.reply('✅ تم إنشاء لوحة الاقتراحات.');
-        deleteAfter(sentReply);
+
+        // تحليل الوسائط: عنوان=... نص=... صورة=...
+        const fullText = args.join(' ');
+        let customTitle = null;
+        let customText = null;
+        let customImage = null;
+
+        // استخراج عنوان
+        const titleMatch = fullText.match(/عنوان\s*=\s*(.+?)(?=\s*(?:نص|صورة)\s*=|$)/);
+        if (titleMatch) customTitle = titleMatch[1].trim();
+
+        // استخراج نص
+        const textMatch = fullText.match(/نص\s*=\s*(.+?)(?=\s*(?:عنوان|صورة)\s*=|$)/);
+        if (textMatch) customText = textMatch[1].trim();
+
+        // استخراج صورة
+        const imageMatch = fullText.match(/صورة\s*=\s*(https?:\/\/\S+)/);
+        if (imageMatch) customImage = imageMatch[1].trim();
+
+        // تحديث الإعدادات إذا تم تمرير قيم
+        const updateData = {};
+        if (customTitle) updateData.suggestionsPanelTitle = customTitle;
+        if (customText) updateData.suggestionsPanelText = customText;
+        if (customImage) updateData.suggestionsPanelImage = customImage;
+        if (Object.keys(updateData).length > 0) {
+          await updateGuildConfig(guildId, updateData);
+        }
+
+        // إعادة تحميل الـ config بعد التحديث
+        const updatedConfig = await getGuildConfig(guildId);
+        const panel = await buildSuggestionPanel(updatedConfig);
+
+        // إرسال البانل في القناة الحالية (أو قناة الاقتراحات إذا كانت معيّنة)
+        let targetChannel = message.channel;
+        if (updatedConfig.suggestionsChannel) {
+          const suggChannel = message.guild.channels.cache.get(updatedConfig.suggestionsChannel);
+          if (suggChannel) targetChannel = suggChannel;
+        }
+
+        try {
+          await targetChannel.send({ embeds: [panel.embed], components: [panel.row] });
+          logToChannel(guildId, { 
+            title: '💡 إنشاء لوحة اقتراحات', 
+            color: THEME.ORANGE, 
+            description: `**${message.author}** أنشأ لوحة الاقتراحات في ${targetChannel}` 
+          });
+          sentReply = await message.reply({ 
+            embeds: [new EmbedBuilder()
+              .setColor(THEME.ORANGE)
+              .setDescription(`✅ تم إنشاء لوحة الاقتراحات في ${targetChannel}\n\n**ملاحظة:** ${updatedConfig.suggestionsChannel ? '' : '⚠️ لم يتم تعيين قناة اقتراحات! استخدم `!تعيين قناة_اقتراح #قناة`'}`)
+            ] 
+          });
+          deleteAfter(sentReply);
+        } catch (err) {
+          console.error('❌ خطأ في إرسال بانل الاقتراحات:', err);
+          sentReply = await message.reply(`❌ فشل إنشاء البانل: ${err.message}`);
+          deleteAfter(sentReply);
+        }
         return;
       }
 
@@ -2937,6 +2993,7 @@ client.on('interactionCreate', async (interaction) => {
               .setRequired(true)
               .setMinLength(3)
               .setMaxLength(100)
+              .setPlaceholder('اكتب عنواناً مختصراً لاقتراحك...')
           ),
           new ActionRowBuilder().addComponents(
             new TextInputBuilder()
@@ -2946,6 +3003,7 @@ client.on('interactionCreate', async (interaction) => {
               .setRequired(true)
               .setMinLength(10)
               .setMaxLength(1000)
+              .setPlaceholder('اشرح فكرتك بالتفصيل...')
           )
         );
       return await interaction.showModal(modal);
@@ -2959,7 +3017,7 @@ client.on('interactionCreate', async (interaction) => {
 
       if (!config.suggestionsChannel) {
         return interaction.reply({
-          content: '⚠️ لم يتم تعيين قناة للاقتراحات.',
+          content: '⚠️ لم يتم تعيين قناة للاقتراحات. تواصل مع الإدارة.',
           ephemeral: true
         });
       }
@@ -2987,7 +3045,7 @@ client.on('interactionCreate', async (interaction) => {
       );
 
       await channel.send({ content: `📩 اقتراح جديد من ${interaction.user}`, embeds: [embed], components: [row] });
-      await interaction.reply({ content: '✅ تم إرسال اقتراحك بنجاح!', ephemeral: true });
+      await interaction.reply({ content: `✅ تم إرسال اقتراحك بنجاح إلى ${channel}!`, ephemeral: true });
 
       logToChannel(guild.id, {
         title: '💡 اقتراح جديد',
@@ -3073,7 +3131,6 @@ client.on('interactionCreate', async (interaction) => {
       // ✅ معالج خيار "إعادة تعيين"
       if (selectedValue === 'SELF_ROLES_RESET') {
         try {
-          // نحذف رسالة البانل القديمة ونرسل وحدة جديدة نظيفة
           const config = await getGuildConfig(interaction.guild.id);
           const panel = await buildSelfRolesPanel(interaction.guild.id, interaction.guild, config);
           if (panel) {
@@ -3106,7 +3163,6 @@ client.on('interactionCreate', async (interaction) => {
         }
       }
 
-      // ===== باقي الخيارات: رتب عادية =====
       if (!interaction.guild.members.me.permissions.has(PermissionsBitField.Flags.ManageRoles)) {
         return interaction.editReply({
           embeds: [new EmbedBuilder().setColor(THEME.BLACK).setDescription('❌ لا أملك صلاحية إدارة الرتب.')]
@@ -3311,7 +3367,7 @@ client.on('interactionCreate', async (interaction) => {
     }
 
     // ============================================================
-    // ===== معالج أزرار التقييم =====
+    // ===== معالج أزرار التقييم (✅ يرسل لروم التقييمات الآن) =====
     // ============================================================
     if (interaction.isButton() && interaction.customId.startsWith('rate_ticket_')) {
       const parts = interaction.customId.split('_');
@@ -3359,6 +3415,45 @@ client.on('interactionCreate', async (interaction) => {
           { upsert: true, new: true }
         );
 
+        // ✅ إرسال التقييم لروم التقييمات إذا كانت معيّنة
+        try {
+          const config = await getGuildConfig(guildId);
+          if (config.ticketRatingChannel) {
+            const ratingChannel = interaction.client.channels.cache.get(config.ticketRatingChannel);
+            if (ratingChannel) {
+              const ratingData = await TicketRating.findOne({ guildId, ticketId: channelId });
+              const stars = '⭐'.repeat(rating);
+              const member = await interaction.guild.members.fetch(ownerId).catch(() => null);
+              const closedByMember = ratingData?.closedBy ? await interaction.guild.members.fetch(ratingData.closedBy).catch(() => null) : null;
+
+              const ratingLogEmbed = new EmbedBuilder()
+                .setTitle('⭐ تقييم جديد')
+                .setColor(THEME.ORANGE)
+                .setThumbnail(member ? member.user.displayAvatarURL() : null)
+                .addFields(
+                  { name: '👤 صاحب التذكرة', value: member ? `${member.user.tag} (${member})` : `<@${ownerId}>`, inline: true },
+                  { name: '🎯 التقييم', value: `${stars} (${rating}/5)`, inline: true },
+                  { name: '📌 القسم', value: ratingData?.section || 'غير معروف', inline: true },
+                  { name: '🔒 أغلق بواسطة', value: closedByMember ? `${closedByMember.user.tag}` : (ratingData?.closedBy ? `<@${ratingData.closedBy}>` : 'غير معروف'), inline: true },
+                  { name: '🆔 معرف التذكرة', value: `\`${channelId}\``, inline: true },
+                  { name: '📅 التاريخ', value: new Date().toLocaleString('ar-EG'), inline: true }
+                )
+                .setTimestamp()
+                .setFooter({ text: `نظام تقييم التذاكر • ${interaction.guild.name}` });
+
+              if (ratingData?.comment) {
+                ratingLogEmbed.addFields({ name: '💬 التعليق', value: ratingData.comment, inline: false });
+              }
+
+              await ratingChannel.send({ embeds: [ratingLogEmbed] }).catch(err => {
+                console.error('❌ فشل إرسال التقييم للروم:', err);
+              });
+            }
+          }
+        } catch (e) {
+          console.error('❌ خطأ في إرسال التقييم:', e);
+        }
+
         const stars = '⭐'.repeat(rating);
         const thanksEmbed = new EmbedBuilder()
           .setTitle('✅ شكراً لتقييمك!')
@@ -3404,6 +3499,35 @@ client.on('interactionCreate', async (interaction) => {
         },
         { upsert: true, new: true }
       );
+
+      // ✅ إرسال التعليق لروم التقييمات إذا كانت معيّنة
+      try {
+        const config = await getGuildConfig(guildId);
+        if (config.ticketRatingChannel) {
+          const ratingChannel = interaction.client.channels.cache.get(config.ticketRatingChannel);
+          if (ratingChannel) {
+            const ratingData = await TicketRating.findOne({ guildId, ticketId: channelId });
+            const member = await interaction.guild.members.fetch(ownerId).catch(() => null);
+
+            const commentEmbed = new EmbedBuilder()
+              .setTitle('💬 تعليق جديد على تقييم')
+              .setColor(THEME.ORANGE)
+              .setThumbnail(member ? member.user.displayAvatarURL() : null)
+              .addFields(
+                { name: '👤 صاحب التذكرة', value: member ? `${member.user.tag}` : `<@${ownerId}>`, inline: true },
+                { name: '🎯 التقييم', value: ratingData?.rating ? `${'⭐'.repeat(ratingData.rating)} (${ratingData.rating}/5)` : 'لم يقيّم بعد', inline: true },
+                { name: '📌 القسم', value: ratingData?.section || 'غير معروف', inline: true },
+                { name: '💬 التعليق', value: comment, inline: false }
+              )
+              .setTimestamp()
+              .setFooter({ text: `نظام تقييم التذاكر • ${interaction.guild.name}` });
+
+            await ratingChannel.send({ embeds: [commentEmbed] }).catch(() => {});
+          }
+        }
+      } catch (e) {
+        console.error('❌ خطأ في إرسال التعليق:', e);
+      }
 
       const thanksEmbed = new EmbedBuilder()
         .setTitle('✅ تم استلام تعليقك!')
