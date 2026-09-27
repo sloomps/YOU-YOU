@@ -1,6 +1,7 @@
 // ============================================================
 // البوت - ثيم برتقالي وأسود - خلفية ترحيب - MongoDB
 // نظام رتب تفاعلي بقائمة منسدلة (تبديل) - الاسم فقط
+// + خيار إعادة تعيين داخل القائمة المنسدلة
 // ============================================================
 
 const {
@@ -415,6 +416,58 @@ async function updateSelfRole(guildId, roleId, data) {
     data.emoji = '🎭';
   }
   return await SelfRole.findOneAndUpdate({ guildId, roleId }, data, { new: true });
+}
+
+// ========== دوال بناء بانل الرتب (مشتركة) ==========
+async function buildSelfRolesPanel(guildId, guild, config) {
+  const selfRoles = await getSelfRoles(guildId);
+  if (!selfRoles.length) return null;
+
+  const generalImage = getGeneralImage(guild, config);
+  const panelText = config.rolesPanelText || 'اختر الرتب التي تناسبك من القائمة المنسدلة أدناه.\n\n**🖱️ اضغط على الرتبة لإضافتها، واضغط مرة أخرى لإزالتها.**';
+  const panelImage = config.rolesImage || null;
+
+  const embed = new EmbedBuilder()
+    .setTitle('🎭 رتب الاختيار الذاتي')
+    .setDescription(panelText)
+    .setColor(THEME.ORANGE)
+    .setFooter({ text: 'اضغط على الرتبة لإضافتها أو إزالتها من حسابك.' });
+
+  if (panelImage) embed.setImage(panelImage);
+  else if (generalImage) embed.setThumbnail(generalImage);
+
+  // القائمة المنسدلة - الاسم فقط بدون منشن
+  // نترك مكاناً لزر "إعادة تعيين" (24 رتبة كحد أقصى + خيار ريستارت = 25)
+  const options = selfRoles.slice(0, 24).map(r => {
+    const opt = {
+      label: r.label.slice(0, 100),
+      value: r.roleId,
+    };
+    const parsedEmoji = parseEmoji(r.emoji);
+    if (parsedEmoji) opt.emoji = parsedEmoji;
+    else opt.emoji = '🎭';
+    if (r.description) opt.description = r.description.slice(0, 100);
+    return opt;
+  });
+
+  // ✅ خيار إعادة التعيين داخل القائمة
+  options.push({
+    label: 'إعادة تعيين',
+    value: 'SELF_ROLES_RESET',
+    emoji: '🔄',
+    description: 'إلغاء التحديد وإعادة إرسال القائمة',
+  });
+
+  const row = new ActionRowBuilder().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId('self_roles_toggle')
+      .setPlaceholder('🎭 اختر رتبة...')
+      .setMinValues(1)
+      .setMaxValues(1)
+      .addOptions(options)
+  );
+
+  return { embed, row };
 }
 
 // ========== العميل ==========
@@ -1340,59 +1393,20 @@ client.on('messageCreate', async (message) => {
           }
 
           // ============================================================
-          // ===== بانل (نظام التبديل - الاسم فقط) =====
+          // ===== بانل (نظام التبديل - الاسم فقط + زر إعادة تعيين) =====
           // ============================================================
           if (action === 'بانل') {
-            const selfRoles = await getSelfRoles(guildId);
-            if (!selfRoles.length) {
+            const panel = await buildSelfRolesPanel(guildId, message.guild, config);
+            if (!panel) {
               sentReply = await message.reply('⚠️ لا توجد رتب مسجلة. استخدم `!تعيين رتب اضافة` أولاً.');
               deleteAfter(sentReply);
               return;
             }
 
             const targetChannel = message.mentions.channels.first() || message.channel;
-            const panelText = config.rolesPanelText || 'اختر الرتب التي تناسبك من القائمة المنسدلة أدناه.\n\n**🖱️ اضغط على الرتبة لإضافتها، واضغط مرة أخرى لإزالتها.**';
-            const panelImage = config.rolesImage || null;
-
-            const embed = new EmbedBuilder()
-              .setTitle('🎭 رتب الاختيار الذاتي')
-              .setDescription(panelText)
-              .setColor(THEME.ORANGE)
-              .setFooter({ text: 'اضغط على الرتبة لإضافتها أو إزالتها من حسابك.' });
-
-            if (panelImage) embed.setImage(panelImage);
-            else if (generalImage) embed.setThumbnail(generalImage);
-
-            // القائمة المنسدلة - الاسم فقط بدون منشن
-            const options = selfRoles.slice(0, 25).map(r => {
-              const opt = {
-                label: r.label.slice(0, 100), // الاسم فقط
-                value: r.roleId,
-              };
-
-              const parsedEmoji = parseEmoji(r.emoji);
-              if (parsedEmoji) {
-                opt.emoji = parsedEmoji;
-              } else {
-                opt.emoji = '🎭';
-              }
-
-              if (r.description) opt.description = r.description.slice(0, 100);
-              return opt;
-            });
-
-            // min=1 max=1: اختيار واحد فقط في كل مرة (Toggle)
-            const row = new ActionRowBuilder().addComponents(
-              new StringSelectMenuBuilder()
-                .setCustomId('self_roles_toggle')
-                .setPlaceholder('🎭 اختر رتبة...')
-                .setMinValues(1)
-                .setMaxValues(1)
-                .addOptions(options)
-            );
 
             try {
-              await targetChannel.send({ embeds: [embed], components: [row] });
+              await targetChannel.send({ embeds: [panel.embed], components: [panel.row] });
               logToChannel(guildId, { title: '📢 إرسال بانل الرتب', color: THEME.ORANGE, description: `**${message.author}** أرسل بانل الرتب في ${targetChannel}` });
               sentReply = await message.reply({ embeds: [new EmbedBuilder().setColor(THEME.ORANGE).setDescription(`✅ تم إرسال البانل في ${targetChannel}`)] });
               deleteAfter(sentReply);
@@ -3049,27 +3063,64 @@ client.on('interactionCreate', async (interaction) => {
     }
 
     // ============================================================
-    // ===== القائمة المنسدلة للرتب الذاتية (Toggle) =====
+    // ===== القائمة المنسدلة للرتب الذاتية (Toggle) + إعادة تعيين =====
     // ============================================================
     if (interaction.isStringSelectMenu() && interaction.customId === 'self_roles_toggle') {
       await interaction.deferReply({ ephemeral: true });
 
+      const selectedValue = interaction.values[0];
+
+      // ✅ معالج خيار "إعادة تعيين"
+      if (selectedValue === 'SELF_ROLES_RESET') {
+        try {
+          // نحذف رسالة البانل القديمة ونرسل وحدة جديدة نظيفة
+          const config = await getGuildConfig(interaction.guild.id);
+          const panel = await buildSelfRolesPanel(interaction.guild.id, interaction.guild, config);
+          if (panel) {
+            await interaction.message.delete().catch(() => {});
+            await interaction.channel.send({ embeds: [panel.embed], components: [panel.row] });
+            return interaction.editReply({
+              embeds: [new EmbedBuilder()
+                .setTitle('🔄 تم إعادة التعيين')
+                .setColor(THEME.ORANGE)
+                .setDescription('تم إعادة إرسال القائمة بشكل نظيف.')
+                .setTimestamp()
+              ]
+            });
+          } else {
+            return interaction.editReply({
+              embeds: [new EmbedBuilder()
+                .setColor(THEME.BLACK)
+                .setDescription('⚠️ لا توجد رتب مسجلة حالياً.')
+              ]
+            });
+          }
+        } catch (err) {
+          console.error('❌ خطأ في إعادة تعيين القائمة:', err);
+          return interaction.editReply({
+            embeds: [new EmbedBuilder()
+              .setColor(THEME.BLACK)
+              .setDescription(`❌ فشل إعادة التعيين: ${err.message}`)
+            ]
+          });
+        }
+      }
+
+      // ===== باقي الخيارات: رتب عادية =====
       if (!interaction.guild.members.me.permissions.has(PermissionsBitField.Flags.ManageRoles)) {
         return interaction.editReply({
           embeds: [new EmbedBuilder().setColor(THEME.BLACK).setDescription('❌ لا أملك صلاحية إدارة الرتب.')]
         });
       }
 
-      const selectedRoleId = interaction.values[0];
-      const role = interaction.guild.roles.cache.get(selectedRoleId);
+      const role = interaction.guild.roles.cache.get(selectedValue);
       if (!role) {
         return interaction.editReply({
           embeds: [new EmbedBuilder().setColor(THEME.BLACK).setDescription('❌ الرتبة غير موجودة.')]
         });
       }
 
-      // التحقق من أن الرتبة مسجلة في النظام
-      const selfRole = await SelfRole.findOne({ guildId: interaction.guild.id, roleId: selectedRoleId });
+      const selfRole = await SelfRole.findOne({ guildId: interaction.guild.id, roleId: selectedValue });
       if (!selfRole) {
         return interaction.editReply({
           embeds: [new EmbedBuilder().setColor(THEME.BLACK).setDescription('❌ هذه الرتبة غير مسجلة في النظام.')]
@@ -3078,7 +3129,6 @@ client.on('interactionCreate', async (interaction) => {
 
       const member = interaction.member;
 
-      // التحقق من موضع الرتبة
       if (role.position >= interaction.guild.members.me.roles.highest.position) {
         return interaction.editReply({
           embeds: [new EmbedBuilder().setColor(THEME.BLACK).setDescription(`❌ رتبة **${selfRole.label}** أعلى من رتبتي، لا أستطيع إدارتها.`)]
@@ -3087,7 +3137,6 @@ client.on('interactionCreate', async (interaction) => {
 
       try {
         if (member.roles.cache.has(role.id)) {
-          // إزالة الرتبة
           await member.roles.remove(role, 'إزالة ذاتية للرتب');
           return interaction.editReply({
             embeds: [new EmbedBuilder()
@@ -3098,7 +3147,6 @@ client.on('interactionCreate', async (interaction) => {
             ]
           });
         } else {
-          // إضافة الرتبة
           await member.roles.add(role, 'اختيار ذاتي للرتب');
           return interaction.editReply({
             embeds: [new EmbedBuilder()
