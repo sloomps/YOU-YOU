@@ -1340,7 +1340,7 @@ client.on('messageCreate', async (message) => {
           }
 
           // ============================================================
-          // ===== بانل (بدون زر حذف الكل - نظام التبديل) =====
+          // ===== بانل (نظام التبديل - الاسم فقط) =====
           // ============================================================
           if (action === 'بانل') {
             const selfRoles = await getSelfRoles(guildId);
@@ -2904,7 +2904,7 @@ client.on('messageCreate', async (message) => {
 });
 
 // ============================================================
-// ========== معالج التفاعلات ============
+// ========== معالج التفاعلات ==========
 // ============================================================
 
 client.on('interactionCreate', async (interaction) => {
@@ -3081,7 +3081,7 @@ client.on('interactionCreate', async (interaction) => {
       // التحقق من موضع الرتبة
       if (role.position >= interaction.guild.members.me.roles.highest.position) {
         return interaction.editReply({
-          embeds: [new EmbedBuilder().setColor(THEME.BLACK).setDescription(`❌ رتبة **${role.name}** أعلى من رتبتي، لا أستطيع إدارتها.`)]
+          embeds: [new EmbedBuilder().setColor(THEME.BLACK).setDescription(`❌ رتبة **${selfRole.label}** أعلى من رتبتي، لا أستطيع إدارتها.`)]
         });
       }
 
@@ -3093,9 +3093,8 @@ client.on('interactionCreate', async (interaction) => {
             embeds: [new EmbedBuilder()
               .setTitle('🗑️ تم إزالة الرتبة')
               .setColor(THEME.ORANGE)
-              .setDescription(`تم إزالة رتبة **${selfRole.emoji} ${selfRole.label}** من حسابك.\n\n> اضغط مرة أخرى لإضافتها.`)
+              .setDescription(`${selfRole.emoji} **${selfRole.label}**`)
               .setTimestamp()
-              .setFooter({ text: interaction.guild.name })
             ]
           });
         } else {
@@ -3105,9 +3104,8 @@ client.on('interactionCreate', async (interaction) => {
             embeds: [new EmbedBuilder()
               .setTitle('✅ تم إضافة الرتبة')
               .setColor(THEME.ORANGE)
-              .setDescription(`تم إضافة رتبة **${selfRole.emoji} ${selfRole.label}** إلى حسابك.\n\n> اضغط مرة أخرى لإزالتها.`)
+              .setDescription(`${selfRole.emoji} **${selfRole.label}**`)
               .setTimestamp()
-              .setFooter({ text: interaction.guild.name })
             ]
           });
         }
