@@ -1,6 +1,6 @@
 // ============================================================
 // البوت - ثيم برتقالي وأسود - خلفية ترحيب - MongoDB
-// نظام رتب تفاعلي بقائمة منسدلة
+// نظام رتب تفاعلي بقائمة منسدلة - إصلاح الإيموجي
 // ============================================================
 
 const {
@@ -149,7 +149,6 @@ const TicketRatingSchema = new mongoose.Schema({
 TicketRatingSchema.index({ guildId: 1, ticketId: 1 }, { unique: true });
 const TicketRating = mongoose.model('TicketRating', TicketRatingSchema);
 
-// ===== جديد: الرتب الذاتية =====
 const SelfRoleSchema = new mongoose.Schema({
   guildId: { type: String, required: true },
   roleId: { type: String, required: true },
@@ -351,12 +350,51 @@ function sanitizeChannelName(name) {
     .slice(0, 32) || 'ticket';
 }
 
-// ===== دوال الرتب الذاتية =====
+// ============================================================
+// ========== دوال التحقق من الإيموجي ==========
+// ============================================================
+
+function isValidEmoji(emoji) {
+  if (!emoji || typeof emoji !== 'string') return false;
+  // إيموجي مخصص: <:name:id> أو <a:name:id>
+  if (/^<a?:\w{2,32}:\d{17,20}>$/.test(emoji)) return true;
+  // إيموجي Unicode عادي
+  try {
+    const emojiRegex = /^(\p{Emoji_Presentation}|\p{Emoji}\uFE0F|\p{Extended_Pictographic})(\u200D(\p{Emoji_Presentation}|\p{Emoji}\uFE0F|\p{Extended_Pictographic}))*$/u;
+    return emojiRegex.test(emoji) && emoji.length <= 8;
+  } catch (e) {
+    return false;
+  }
+}
+
+function parseEmoji(emoji) {
+  if (!emoji || typeof emoji !== 'string') return null;
+  // إيموجي مخصص
+  const customMatch = emoji.match(/^<a?:(\w{2,32}):(\d{17,20})>$/);
+  if (customMatch) {
+    return { name: customMatch[1], id: customMatch[2] };
+  }
+  // إيموجي Unicode
+  if (isValidEmoji(emoji)) {
+    return emoji;
+  }
+  return null;
+}
+
+// ============================================================
+// ========== دوال الرتب الذاتية ==========
+// ============================================================
+
 async function getSelfRoles(guildId) {
   return await SelfRole.find({ guildId }).sort({ order: 1, createdAt: 1 });
 }
 
 async function addSelfRole(guildId, roleId, label, emoji = '🎭', image = null, description = '') {
+  // التحقق من صحة الإيموجي قبل الحفظ
+  if (!parseEmoji(emoji)) {
+    emoji = '🎭';
+  }
+  
   const existing = await SelfRole.findOne({ guildId, roleId });
   const maxOrder = await SelfRole.findOne({ guildId }).sort({ order: -1 });
   const order = maxOrder ? maxOrder.order + 1 : 0;
@@ -379,6 +417,10 @@ async function removeSelfRole(guildId, roleId) {
 }
 
 async function updateSelfRole(guildId, roleId, data) {
+  // التحقق من الإيموجي إذا كان يتم تحديثه
+  if (data.emoji !== undefined && !parseEmoji(data.emoji)) {
+    data.emoji = '🎭';
+  }
   return await SelfRole.findOneAndUpdate({ guildId, roleId }, data, { new: true });
 }
 
@@ -868,7 +910,7 @@ client.on('messageCreate', async (message) => {
             { name: '💡 الاقتراحات', value: '`بانل_اقتراح` (للمتحكمين)', inline: false },
             { name: '🎫 التذاكر', value: '`بانل` `عرض_تذكرة` `تعيين تذكرة` (للمتحكمين)', inline: false },
             { name: '⭐ التقييمات', value: '`تقييمات` (للمتحكمين)', inline: false },
-            { name: '🎭 الرتب الذاتية', value: '`تعيين رتب` أوامر إدارة الرتب (للمتحكمين)', inline: false },
+            { name: '🎭 الرتب الذاتية', value: '`تعيين رتب` (للمتحكمين)', inline: false },
             { name: '✏️ تغيير الاسم', value: '`تغيير_اسم`', inline: false },
             { name: 'ℹ️ معلومات', value: '`معلومات` `سيرفر` `بينق`', inline: false },
             { name: '⚙️ إعدادات', value: '`تعيين` (للمتحكمين)', inline: false },
@@ -984,6 +1026,33 @@ client.on('messageCreate', async (message) => {
       }
 
       // ============================================================
+      // ===== أمر إصلاح الرتب القديمة (مؤقت) =====
+      // ============================================================
+      if (cmd === 'اصلاح_رتب') {
+        if (!OWNER_ID || message.author.id !== OWNER_ID) {
+          sentReply = await message.reply('❌ هذا الأمر للمالك فقط.');
+          deleteAfter(sentReply);
+          return;
+        }
+        const allRoles = await SelfRole.find({ guildId });
+        let fixed = 0;
+        let valid = 0;
+        for (const r of allRoles) {
+          if (!parseEmoji(r.emoji)) {
+            r.emoji = '🎭';
+            await r.save();
+            fixed++;
+            console.log(`🔧 تم إصلاح إيموجي: ${r.label} → 🎭`);
+          } else {
+            valid++;
+          }
+        }
+        sentReply = await message.reply(`✅ تم إصلاح **${fixed}** رتبة. الرتب السليمة: **${valid}**.`);
+        deleteAfter(sentReply);
+        return;
+      }
+
+      // ============================================================
       // ===== تعيين =====
       // ============================================================
       if (cmd === 'تعيين') {
@@ -1025,13 +1094,12 @@ client.on('messageCreate', async (message) => {
           const action = args[1]?.toLowerCase();
           const rest = args.slice(2);
 
-          // عرض المساعدة
           if (!action) {
             const selfRoles = await getSelfRoles(guildId);
             const listText = selfRoles.length
               ? selfRoles.map((r, i) => {
                   const role = message.guild.roles.cache.get(r.roleId);
-                  return `**${i + 1}.** ${r.emoji} **${r.label}** ${role ? `→ ${role}` : '⚠️ (محذوفة)'}${r.image ? ' 🖼️' : ''}`;
+                  return `**${i + 1}.** ${r.emoji} **${r.label}** ${role ? `→ ${role}` : '⚠️ (محذوفة)'}`;
                 }).join('\n')
               : 'لا توجد رتب مسجلة بعد.';
 
@@ -1067,9 +1135,15 @@ client.on('messageCreate', async (message) => {
             }
 
             const label = rest[0] || role.name;
-            const emoji = rest[1] || '🎭';
+            let emoji = rest[1] || '🎭';
             const image = rest[2] && rest[2].match(/^https?:\/\//) ? rest[2] : null;
             const description = rest.slice(image ? 3 : 2).join(' ') || '';
+
+            // التحقق من صحة الإيموجي
+            if (!parseEmoji(emoji)) {
+              console.log(`⚠️ إيموجي غير صالح: "${emoji}" - سيتم استخدام 🎭`);
+              emoji = '🎭';
+            }
 
             if (!message.guild.members.me.permissions.has(PermissionsBitField.Flags.ManageRoles)) {
               sentReply = await message.reply('❌ لا أملك صلاحية إدارة الرتب.');
@@ -1134,7 +1208,14 @@ client.on('messageCreate', async (message) => {
 
             const updateData = {};
             if (option === 'الاسم') updateData.label = newValue;
-            else if (option === 'الايموجي') updateData.emoji = newValue;
+            else if (option === 'الايموجي') {
+              if (!parseEmoji(newValue)) {
+                sentReply = await message.reply('⚠️ الإيموجي غير صالح. استخدم إيموجي Unicode عادي أو إيموجي مخصص من هذا السيرفر.');
+                deleteAfter(sentReply);
+                return;
+              }
+              updateData.emoji = newValue;
+            }
             else if (option === 'الصورة') updateData.image = newValue;
             else if (option === 'الوصف') updateData.description = newValue;
             else {
@@ -1290,12 +1371,21 @@ client.on('messageCreate', async (message) => {
             if (panelImage) embed.setImage(panelImage);
             else if (generalImage) embed.setThumbnail(generalImage);
 
+            // بناء القائمة المنسدلة مع التحقق من الإيموجي
             const options = selfRoles.slice(0, 25).map(r => {
               const opt = {
                 label: r.label.slice(0, 100),
                 value: r.roleId,
-                emoji: r.emoji || '🎭',
               };
+
+              // التحقق من الإيموجي قبل الإضافة
+              const parsedEmoji = parseEmoji(r.emoji);
+              if (parsedEmoji) {
+                opt.emoji = parsedEmoji;
+              } else {
+                opt.emoji = '🎭';
+              }
+
               if (r.description) opt.description = r.description.slice(0, 100);
               return opt;
             });
@@ -1316,11 +1406,16 @@ client.on('messageCreate', async (message) => {
                 .setStyle(ButtonStyle.Danger)
             );
 
-            await targetChannel.send({ embeds: [embed], components: [row, clearRow] });
-            logToChannel(guildId, { title: '📢 إرسال بانل الرتب', color: THEME.ORANGE, description: `**${message.author}** أرسل بانل الرتب في ${targetChannel}` });
-
-            sentReply = await message.reply({ embeds: [new EmbedBuilder().setColor(THEME.ORANGE).setDescription(`✅ تم إرسال البانل في ${targetChannel}`)] });
-            deleteAfter(sentReply);
+            try {
+              await targetChannel.send({ embeds: [embed], components: [row, clearRow] });
+              logToChannel(guildId, { title: '📢 إرسال بانل الرتب', color: THEME.ORANGE, description: `**${message.author}** أرسل بانل الرتب في ${targetChannel}` });
+              sentReply = await message.reply({ embeds: [new EmbedBuilder().setColor(THEME.ORANGE).setDescription(`✅ تم إرسال البانل في ${targetChannel}`)] });
+              deleteAfter(sentReply);
+            } catch (err) {
+              console.error('❌ خطأ في إرسال البانل:', err);
+              sentReply = await message.reply(`❌ فشل إرسال البانل: ${err.message}`);
+              deleteAfter(sentReply);
+            }
             return;
           }
 
@@ -1645,7 +1740,6 @@ client.on('messageCreate', async (message) => {
           return;
         }
 
-        // ===== إعدادات التقييم =====
         if (sub === 'تقييم') {
           if (!value || !['on', 'off'].includes(value.toLowerCase())) {
             sentReply = await message.reply('⚠️ الصيغة: `!تعيين تقييم [on/off]`');
@@ -1673,7 +1767,6 @@ client.on('messageCreate', async (message) => {
           return;
         }
 
-        // ===== التذاكر =====
         if (sub === 'تذكرة') {
           const settings = await getTicketSettings(guildId);
           const action = args[1]?.toLowerCase();
@@ -1707,7 +1800,8 @@ client.on('messageCreate', async (message) => {
             }
             const sectionName = parts[1].trim();
             const roleId = parts[2];
-            const emoji = parts[3] || '📌';
+            let emoji = parts[3] || '📌';
+            if (!parseEmoji(emoji)) emoji = '📌';
 
             if (settings.sections.find(s => s.name === sectionName)) {
               sentReply = await message.reply(`⚠️ قسم "${sectionName}" موجود بالفعل.`);
@@ -1730,7 +1824,8 @@ client.on('messageCreate', async (message) => {
               return;
             }
             const sectionName = parts[1].trim();
-            const emoji = parts[2];
+            let emoji = parts[2];
+            if (!parseEmoji(emoji)) emoji = '📌';
             const section = settings.sections.find(s => s.name === sectionName);
             if (!section) {
               sentReply = await message.reply(`⚠️ قسم "${sectionName}" غير موجود.`);
@@ -1837,11 +1932,16 @@ client.on('messageCreate', async (message) => {
         const imageUrl = settings.image || 'https://i.imgur.com/GkKqN3G.png';
         const embed = new EmbedBuilder().setTitle('🎫 تذاكر دعم فني').setDescription(settings.text).setColor(THEME.ORANGE).setImage(imageUrl).setFooter({ text: 'سيتم إنشاء قناة خاصة بك.' });
         if (generalImage) embed.setThumbnail(generalImage);
-        const options = settings.sections.map(s => ({
-          label: s.name,
-          value: s.name,
-          emoji: s.emoji || '📌',
-        }));
+        const options = settings.sections.map(s => {
+          const opt = {
+            label: s.name,
+            value: s.name,
+          };
+          const parsedEmoji = parseEmoji(s.emoji);
+          if (parsedEmoji) opt.emoji = parsedEmoji;
+          else opt.emoji = '📌';
+          return opt;
+        });
         if (!options.length) {
           sentReply = await message.reply('⚠️ لا توجد أقسام مضافة.');
           deleteAfter(sentReply);
@@ -1853,10 +1953,16 @@ client.on('messageCreate', async (message) => {
             .setPlaceholder('📌 اختر القسم...')
             .addOptions(options)
         );
-        await message.channel.send({ embeds: [embed], components: [row] });
-        logToChannel(guildId, { title: '🎫 إنشاء لوحة تذاكر', color: THEME.ORANGE, description: `**${message.author}** أنشأ لوحة تذاكر.` });
-        sentReply = await message.reply('✅ تم إنشاء لوحة التذاكر.');
-        deleteAfter(sentReply);
+        try {
+          await message.channel.send({ embeds: [embed], components: [row] });
+          logToChannel(guildId, { title: '🎫 إنشاء لوحة تذاكر', color: THEME.ORANGE, description: `**${message.author}** أنشأ لوحة تذاكر.` });
+          sentReply = await message.reply('✅ تم إنشاء لوحة التذاكر.');
+          deleteAfter(sentReply);
+        } catch (err) {
+          console.error('❌ خطأ في إنشاء لوحة التذاكر:', err);
+          sentReply = await message.reply(`❌ فشل إنشاء اللوحة: ${err.message}`);
+          deleteAfter(sentReply);
+        }
         return;
       }
 
@@ -2941,9 +3047,7 @@ client.on('interactionCreate', async (interaction) => {
       await interaction.followUp({ content: `📌 ${action} بواسطة ${interaction.user}`, ephemeral: true });
     }
 
-    // ============================================================
     // ===== رتب الإشعارات (القديمة) =====
-    // ============================================================
     if (interaction.isButton() && ['role_game', 'role_event', 'role_ajr'].includes(interaction.customId)) {
       if (!interaction.guild.members.me.permissions.has(PermissionsBitField.Flags.ManageRoles)) {
         return interaction.reply({ content: '❌ لا أملك صلاحية إدارة الرتب.', ephemeral: true });
@@ -2963,7 +3067,7 @@ client.on('interactionCreate', async (interaction) => {
     }
 
     // ============================================================
-    // ===== القائمة المنسدلة للرتب الذاتية (جديد) =====
+    // ===== القائمة المنسدلة للرتب الذاتية =====
     // ============================================================
     if (interaction.isStringSelectMenu() && interaction.customId === 'self_roles_menu') {
       await interaction.deferReply({ ephemeral: true });
