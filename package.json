@@ -1,7 +1,7 @@
 {
-  "name": "vanta-welcome-bot",
+  "name": "dark-kingdom-bot",
   "version": "1.0.0",
-  "description": "Discord bot — advanced welcome system with slash commands | VANTA for WORM 🖤",
+  "description": "Dark theme Discord bot — MongoDB, welcome canvas, tickets, suggestions, economy, levels | The Kingdom Never Falls.",
   "main": "index.js",
   "type": "commonjs",
   "scripts": {
@@ -12,15 +12,19 @@
     "node": ">=18.0.0"
   },
   "dependencies": {
-    "@discordjs/rest": "^2.3.0",
-    "discord-api-types": "^0.37.83",
-    "discord.js": "^14.16.3"
+    "@napi-rs/canvas": "^0.1.65",
+    "discord.js": "^14.16.3",
+    "express": "^4.21.1",
+    "instagram-url-direct": "^2.0.2",
+    "mongoose": "^8.8.0"
   },
   "keywords": [
     "discord",
     "bot",
-    "welcome",
-    "slash-commands"
+    "mongodb",
+    "canvas",
+    "tickets",
+    "economy"
   ],
   "author": "WORM",
   "license": "MIT"
