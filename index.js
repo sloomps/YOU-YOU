@@ -88,7 +88,6 @@ const ConfigSchema = new mongoose.Schema({
   suggestionsPanelButtonText: { type: String, default: '📝 إرسال اقتراحك' },
   ticketRatingEnabled: { type: Boolean, default: true },
   ticketRatingChannel: String,
-  // 🕊️ إعدادات الزاجل
   pigeonChannel: String,
   pigeonTitle: { type: String, default: '🕊️ حمام الزاجل' },
   pigeonDescription: { type: String, default: 'لإرسال رسالة خاصة عبر الحمام الزاجل، اضغط على الزر أدناه.' },
@@ -203,7 +202,6 @@ const NameCooldownSchema = new mongoose.Schema({
 });
 const NameCooldown = mongoose.model('NameCooldown', NameCooldownSchema);
 
-// 🕊️ نموذج الزاجل
 const PigeonSchema = new mongoose.Schema({
   guildId: { type: String, required: true },
   messageId: { type: String },
@@ -504,7 +502,6 @@ async function buildSuggestionPanel(config) {
   return { embed, row };
 }
 
-// 🕊️ دالة بناء بانل الزاجل
 async function buildPigeonPanel(config) {
   const title = config.pigeonTitle || '🕊️ حمام الزاجل';
   const text = config.pigeonDescription || 'لإرسال رسالة خاصة عبر الحمام الزاجل، اضغط على الزر أدناه.';
@@ -534,14 +531,19 @@ async function buildPigeonPanel(config) {
   return { embed, row };
 }
 
-// 🕊️ دالة البحث عن عضو بالاسم أو الآيدي
+// ============================================================
+// 🕊️ دالة البحث عن عضو بالاسم أو الآيدي (محسّنة - نسخة قوية)
+// ============================================================
 async function findMemberByName(guild, query) {
-  if (!query) return null;
+  if (!query || !guild) return null;
+  
   let cleaned = query.trim();
   if (cleaned.startsWith('@')) cleaned = cleaned.slice(1);
-  cleaned = cleaned.split('#')[0];
+  cleaned = cleaned.split('#')[0].trim();
 
-  // 1) بحث بالـ ID
+  if (!cleaned) return null;
+
+  // 1) بحث بالـ ID مباشرة
   if (/^\d{17,20}$/.test(cleaned)) {
     const byId = await guild.members.fetch(cleaned).catch(() => null);
     if (byId) return byId;
@@ -554,26 +556,54 @@ async function findMemberByName(guild, query) {
     if (byMention) return byMention;
   }
 
-  // 3) بحث بـ username
   const lower = cleaned.toLowerCase();
-  const member = guild.members.cache.find(m =>
+
+  // 3) بحث في الـ cache أولاً (سريع)
+  const cached = guild.members.cache.find(m =>
     m.user.username.toLowerCase() === lower ||
     (m.user.globalName && m.user.globalName.toLowerCase() === lower) ||
-    (m.user.tag && m.user.tag.toLowerCase() === cleaned.toLowerCase())
+    (m.user.tag && m.user.tag.toLowerCase() === cleaned.toLowerCase()) ||
+    m.displayName.toLowerCase() === lower ||
+    m.user.username.toLowerCase().includes(lower) ||
+    (m.user.globalName && m.user.globalName.toLowerCase().includes(lower)) ||
+    m.displayName.toLowerCase().includes(lower)
   );
-  if (member) return member;
+  if (cached) return cached;
 
-  // 4) بحث بـ displayName
-  const member2 = guild.members.cache.find(m =>
-    m.displayName.toLowerCase() === lower
-  );
-  if (member2) return member2;
+  // 4) جلب كل الأعضاء من السيرفر ثم البحث
+  try {
+    const allMembers = await guild.members.fetch();
+    
+    // بحث دقيق أولاً
+    let found = allMembers.find(m =>
+      m.user.username.toLowerCase() === lower ||
+      (m.user.globalName && m.user.globalName.toLowerCase() === lower) ||
+      (m.user.tag && m.user.tag.toLowerCase() === cleaned.toLowerCase()) ||
+      m.displayName.toLowerCase() === lower
+    );
+    if (found) return found;
 
-  // 5) بحث partial
-  const member3 = guild.members.cache.find(m =>
-    m.user.username.toLowerCase().includes(lower)
-  );
-  return member3 || null;
+    // بحث جزئي (يحتوي على)
+    found = allMembers.find(m =>
+      m.user.username.toLowerCase().includes(lower) ||
+      (m.user.globalName && m.user.globalName.toLowerCase().includes(lower)) ||
+      m.displayName.toLowerCase().includes(lower)
+    );
+    if (found) return found;
+  } catch (e) {
+    console.error('❌ خطأ في جلب الأعضاء:', e.message);
+  }
+
+  // 5) محاولة أخيرة: البحث كـ user مباشر بـ ID
+  try {
+    const user = await client.users.fetch(cleaned).catch(() => null);
+    if (user) {
+      const member = await guild.members.fetch(user.id).catch(() => null);
+      if (member) return member;
+    }
+  } catch (e) {}
+
+  return null;
 }
 
 // ========== العميل ==========
@@ -2448,8 +2478,8 @@ client.on('messageCreate', async (message) => {
         let title = 'بدون عنوان', description = fullText;
         if (parts.length >= 2) { title = parts[0]; description = parts.slice(1).join(' ، '); }
         const embed = new EmbedBuilder().setTitle(title).setDescription(description).setColor(THEME.ORANGE).setTimestamp();
-        const imageMatch = description.match(/(https?:\/\/[^\s]+\.(?:png|jpg|jpeg|gif|webp))/i);
-        if (imageMatch) { embed.setImage(imageMatch[1]); embed.setDescription(description.replace(imageMatch[1], '').trim() || 'بدون وصف'); }
+        const imageMatch2 = description.match(/(https?:\/\/[^\s]+\.(?:png|jpg|jpeg|gif|webp))/i);
+        if (imageMatch2) { embed.setImage(imageMatch2[1]); embed.setDescription(description.replace(imageMatch2[1], '').trim() || 'بدون وصف'); }
         if (generalImage) embed.setThumbnail(generalImage);
         await message.channel.send({ embeds: [embed] });
         return;
@@ -3139,7 +3169,7 @@ client.on('interactionCreate', async (interaction) => {
       const target = await findMemberByName(guild, targetQuery);
       if (!target) {
         return interaction.editReply({
-          embeds: [new EmbedBuilder().setColor(THEME.BLACK).setDescription(`❌ لم أتمكن من العثور على عضو بالاسم: **${targetQuery}**\n\n> تأكد من كتابة اسم المستخدم بشكل صحيح (بدون @).`)]
+          embeds: [new EmbedBuilder().setColor(THEME.BLACK).setDescription(`❌ لم أتمكن من العثور على عضو بالاسم: **${targetQuery}**\n\n> تأكد من كتابة اسم المستخدم بشكل صحيح (بدون @).\n> أو جرب كتابة اسم العرض (display name) في السيرفر.`)]
         });
       }
 
