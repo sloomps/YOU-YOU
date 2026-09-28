@@ -1,6 +1,6 @@
 // ============================================================
 // البوت الكامل - ثيم برتقالي وأسود - MongoDB
-// يشمل: رتب ذاتية + اقتراحات + تذاكر + تقييمات + حمام زاجل
+// يشمل: رتب ذاتية + اقتراحات + تذاكر + تقييمات + حمام زاجل (مجهول)
 // ============================================================
 
 const {
@@ -512,7 +512,7 @@ async function buildPigeonPanel(config) {
     .setDescription(text)
     .setColor(THEME.ORANGE)
     .setTimestamp()
-    .setFooter({ text: '🕊️ نظام الرسائل الخاصة' });
+    .setFooter({ text: '🕊️ نظام الرسائل المجهولة' });
 
   if (image) embed.setImage(image);
 
@@ -531,9 +531,7 @@ async function buildPigeonPanel(config) {
   return { embed, row };
 }
 
-// ============================================================
-// 🕊️ دالة البحث عن عضو بالاسم أو الآيدي (محسّنة - نسخة قوية)
-// ============================================================
+// 🕊️ دالة البحث عن عضو بالاسم أو الآيدي (محسّنة)
 async function findMemberByName(guild, query) {
   if (!query || !guild) return null;
   
@@ -543,13 +541,11 @@ async function findMemberByName(guild, query) {
 
   if (!cleaned) return null;
 
-  // 1) بحث بالـ ID مباشرة
   if (/^\d{17,20}$/.test(cleaned)) {
     const byId = await guild.members.fetch(cleaned).catch(() => null);
     if (byId) return byId;
   }
 
-  // 2) بحث بالـ mention
   const mentionMatch = query.match(/^<@!?(\d{17,20})>$/);
   if (mentionMatch) {
     const byMention = await guild.members.fetch(mentionMatch[1]).catch(() => null);
@@ -558,7 +554,6 @@ async function findMemberByName(guild, query) {
 
   const lower = cleaned.toLowerCase();
 
-  // 3) بحث في الـ cache أولاً (سريع)
   const cached = guild.members.cache.find(m =>
     m.user.username.toLowerCase() === lower ||
     (m.user.globalName && m.user.globalName.toLowerCase() === lower) ||
@@ -570,11 +565,9 @@ async function findMemberByName(guild, query) {
   );
   if (cached) return cached;
 
-  // 4) جلب كل الأعضاء من السيرفر ثم البحث
   try {
     const allMembers = await guild.members.fetch();
     
-    // بحث دقيق أولاً
     let found = allMembers.find(m =>
       m.user.username.toLowerCase() === lower ||
       (m.user.globalName && m.user.globalName.toLowerCase() === lower) ||
@@ -583,7 +576,6 @@ async function findMemberByName(guild, query) {
     );
     if (found) return found;
 
-    // بحث جزئي (يحتوي على)
     found = allMembers.find(m =>
       m.user.username.toLowerCase().includes(lower) ||
       (m.user.globalName && m.user.globalName.toLowerCase().includes(lower)) ||
@@ -594,7 +586,6 @@ async function findMemberByName(guild, query) {
     console.error('❌ خطأ في جلب الأعضاء:', e.message);
   }
 
-  // 5) محاولة أخيرة: البحث كـ user مباشر بـ ID
   try {
     const user = await client.users.fetch(cleaned).catch(() => null);
     if (user) {
@@ -949,7 +940,6 @@ client.on('messageCreate', async (message) => {
     };
 
     try {
-      // ========== أوامر العملة ==========
       if (cmd === 'رصيدي') {
         const eco = await getEconomy(guildId, userId);
         const embed = new EmbedBuilder()
@@ -1051,7 +1041,6 @@ client.on('messageCreate', async (message) => {
         return;
       }
 
-      // ========== الأوامر العامة ==========
       if (cmd === 'مساعدة') {
         const embed = new EmbedBuilder()
           .setTitle('📖 قائمة الأوامر')
@@ -1109,7 +1098,6 @@ client.on('messageCreate', async (message) => {
         return;
       }
 
-      // ========== نظام التحكم ==========
       if (cmd === 'متحكم') {
         if (!OWNER_ID || message.author.id !== OWNER_ID) {
           sentReply = await message.reply('❌ هذا الأمر للمالك فقط.');
@@ -1211,7 +1199,6 @@ client.on('messageCreate', async (message) => {
         return;
       }
 
-      // ========== تعيين ==========
       if (cmd === 'تعيين') {
         if (!(await hasPermission(message.member, guildId))) {
           sentReply = await message.reply('❌ تحتاج صلاحية متحكم.');
@@ -1247,7 +1234,6 @@ client.on('messageCreate', async (message) => {
           return;
         }
 
-        // ===== 🕊️ إعدادات الزاجل =====
         if (sub === 'روم_زاجل') {
           const channel = message.mentions.channels.first();
           if (!channel) {
@@ -1299,7 +1285,6 @@ client.on('messageCreate', async (message) => {
           return;
         }
 
-        // ===== إدارة الرتب الذاتية =====
         if (sub === 'رتب') {
           const action = args[1]?.toLowerCase();
           const rest = args.slice(2);
@@ -1555,7 +1540,6 @@ client.on('messageCreate', async (message) => {
           return;
         }
 
-        // ===== باقي أوامر التعيين =====
         if (sub === 'ترحيب') {
           const channel = message.mentions.channels.first();
           if (!channel) {
@@ -2016,7 +2000,6 @@ client.on('messageCreate', async (message) => {
         return;
       }
 
-      // ========== بانل الاقتراحات ==========
       if (cmd === 'بانل_اقتراح') {
         if (!(await hasPermission(message.member, guildId))) {
           sentReply = await message.reply('❌ تحتاج صلاحية متحكم.');
@@ -2077,7 +2060,6 @@ client.on('messageCreate', async (message) => {
         return;
       }
 
-      // 🕊️ أمر بانل الزاجل
       if (cmd === 'بانل_زاجل') {
         if (!(await hasPermission(message.member, guildId))) {
           sentReply = await message.reply('❌ تحتاج صلاحية متحكم.');
@@ -2116,7 +2098,6 @@ client.on('messageCreate', async (message) => {
         return;
       }
 
-      // ========== بانل التذاكر ==========
       if (cmd === 'بانل') {
         if (!(await hasPermission(message.member, guildId))) {
           sentReply = await message.reply('❌ تحتاج صلاحية متحكم.');
@@ -2158,7 +2139,6 @@ client.on('messageCreate', async (message) => {
         return;
       }
 
-      // ========== أوامر عامة أخرى ==========
       if (cmd === 'عرض_تذكرة') {
         const settings = await getTicketSettings(guildId);
         const embed = new EmbedBuilder().setTitle('📋 إعدادات التذاكر').setColor(THEME.ORANGE)
@@ -2663,7 +2643,6 @@ client.on('messageCreate', async (message) => {
         return;
       }
 
-      // ========== أوامر الإشراف ==========
       if (cmd === 'حظر') {
         if (!(await hasPermission(message.member, guildId))) {
           sentReply = await message.reply('❌ تحتاج صلاحية متحكم.');
@@ -3008,7 +2987,6 @@ client.on('messageCreate', async (message) => {
     return;
   }
 
-  // ========== XP، الاقتصاد، الأوتو لاين، الردود التلقائية ==========
   try {
     const eco = await getEconomy(guildId, userId);
     eco.messageCount += 1;
@@ -3144,7 +3122,7 @@ client.on('interactionCreate', async (interaction) => {
       return await interaction.showModal(modal);
     }
 
-    // معالجة إرسال الزاجل
+    // معالجة إرسال الزاجل (المُرسِل مخفي)
     if (interaction.isModalSubmit() && interaction.customId === 'pigeon_send_modal') {
       await interaction.deferReply({ ephemeral: true });
 
@@ -3185,20 +3163,20 @@ client.on('interactionCreate', async (interaction) => {
         });
       }
 
-      const sender = interaction.user;
-
+      // ✅ إيمبد الروم: المُرسِل مخفي (🕵️ مجهول)
       const pigeonEmbed = new EmbedBuilder()
         .setTitle('🕊️ وصلتك رسالة زاجل')
         .setDescription(
-          `**📤 المُرسِل:** ${sender} (\`${sender.tag}\`)\n` +
-          `**📥 المُرسَل إليه:** ${target} (\`${target.user.tag}\`)\n` +
+          `**📤 المُرسِل:** 🕵️ مجهول\n` +
+          `**📥 المُرسَل إليه:** ${target}\n` +
           `**📅 التاريخ:** <t:${Math.floor(Date.now() / 1000)}:F>\n\n` +
-          `_اضغط على زر **📖 قراءة زاجل** للاطلاع على المحتوى._`
+          `_اضغط على زر **📖 قراءة زاجل** للاطلاع على المحتوى._\n\n` +
+          `> 🔒 **ملاحظة:** هوية المُرسِل مخفية عن الجميع (بما فيهم أنت)، ما عدا الإدارة.`
         )
         .setColor(THEME.ORANGE)
-        .setThumbnail(sender.displayAvatarURL())
+        .setThumbnail('https://cdn.discordapp.com/emojis/1234567890.png') // يمكنك تغييرها أو حذفها
         .setTimestamp()
-        .setFooter({ text: '🕊️ نظام الحمام الزاجل' });
+        .setFooter({ text: '🕊️ نظام الحمام الزاجل - مُرسِل مجهول' });
 
       if (config.pigeonImage) pigeonEmbed.setImage(config.pigeonImage);
 
@@ -3224,11 +3202,12 @@ client.on('interactionCreate', async (interaction) => {
         });
       }
 
+      // ✅ حفظ المُرسِل الحقيقي في الداتابيس (لأغراض إدارية فقط)
       try {
         await Pigeon.create({
           guildId: guild.id,
           messageId: sentMsg.id,
-          senderId: sender.id,
+          senderId: interaction.user.id,
           recipientId: target.id,
           content,
         });
@@ -3236,33 +3215,34 @@ client.on('interactionCreate', async (interaction) => {
         console.error('❌ خطأ في حفظ الزاجل:', e);
       }
 
+      // ✅ DM للمُرسَل إليه: بدون اسم المُرسِل
       try {
         const dmEmbed = new EmbedBuilder()
           .setTitle('🕊️ وصلتك رسالة زاجل جديدة!')
           .setDescription(
-            `**📤 من:** ${sender.tag}\n` +
+            `**📤 المُرسِل:** 🕵️ مجهول\n` +
             `**🏠 السيرفر:** ${guild.name}\n\n` +
             `> اذهب إلى الروم <#${pigeonChannel.id}> واضغط على **📖 قراءة زاجل** للاطلاع على محتوى الرسالة.`
           )
           .setColor(THEME.ORANGE)
-          .setThumbnail(sender.displayAvatarURL())
           .setTimestamp()
-          .setFooter({ text: '🕊️ نظام الحمام الزاجل' });
+          .setFooter({ text: '🕊️ نظام الحمام الزاجل - مُرسِل مجهول' });
         await target.send({ embeds: [dmEmbed] }).catch(() => {});
       } catch (e) {}
 
+      // ✅ اللوق يحفظ المُرسِل الحقيقي
       logToChannel(guild.id, {
         title: '🕊️ زاجل جديد',
         color: THEME.ORANGE,
-        description: `**من:** ${sender.tag}\n**إلى:** ${target.user.tag}\n**الروم:** ${pigeonChannel}`,
-        footer: 'الحمام الزاجل',
+        description: `**من:** ${interaction.user.tag} (\`${interaction.user.id}\`)\n**إلى:** ${target.user.tag} (\`${target.id}\`)\n**الروم:** ${pigeonChannel}`,
+        footer: 'الحمام الزاجل (سجل إداري)',
       });
 
       return interaction.editReply({
         embeds: [new EmbedBuilder()
           .setColor(THEME.ORANGE)
           .setTitle('✅ تم إرسال الزاجل')
-          .setDescription(`تم إرسال زاجلك إلى **${target.user.tag}** بنجاح!\n📬 وصل في ${pigeonChannel}\n📩 وأُرسل تنبيه في الخاص.`)
+          .setDescription(`تم إرسال زاجلك إلى **${target.user.tag}** بنجاح!\n📬 وصل في ${pigeonChannel}\n📩 وأُرسل تنبيه في الخاص.\n\n> 🔒 **هويتك مخفية** عن المُرسَل إليه وعن الجميع، ما عدا الإدارة.`)
         ]
       });
     }
@@ -3309,20 +3289,40 @@ client.on('interactionCreate', async (interaction) => {
       const sender = await client.users.fetch(pigeonData.senderId).catch(() => null);
       const recipient = await client.users.fetch(pigeonData.recipientId).catch(() => null);
 
-      const readEmbed = new EmbedBuilder()
-        .setTitle('📖 قراءة زاجل')
-        .setDescription(
-          `**📤 المُرسِل:** ${sender ? `${sender.tag}` : `<@${pigeonData.senderId}>`}\n` +
-          `**📥 المُرسَل إليه:** ${recipient ? `${recipient.tag}` : `<@${pigeonData.recipientId}>`}\n` +
-          `**📅 التاريخ:** <t:${Math.floor(pigeonData.createdAt.getTime() / 1000)}:F>\n` +
-          `**📖 حالة القراءة:** ${pigeonData.read ? `✅ قُرئت <t:${Math.floor(pigeonData.readAt.getTime() / 1000)}:R>` : '🆕 جديدة'}\n\n` +
-          `**📜 محتوى الرسالة:**\n\`\`\`\n${pigeonData.content}\n\`\`\``
-        )
-        .setColor(THEME.ORANGE)
-        .setTimestamp()
-        .setFooter({ text: isRecipient ? '🕊️ رسالتك الخاصة' : '🛡️ عرض إداري' });
-
-      if (sender) readEmbed.setThumbnail(sender.displayAvatarURL());
+      // ✅ إيمبد القراءة:
+      // - للمُرسَل إليه: المُرسِل = 🕵️ مجهول
+      // - للإدارة: المُرسِل = الحقيقي
+      let readEmbed;
+      if (isAdmin && !isRecipient) {
+        // عرض إداري: يظهر اسم المُرسِل الحقيقي
+        readEmbed = new EmbedBuilder()
+          .setTitle('📖 قراءة زاجل (عرض إداري)')
+          .setDescription(
+            `**📤 المُرسِل الحقيقي:** ${sender ? `${sender.tag} (\`${sender.id}\`)` : `<@${pigeonData.senderId}>`}\n` +
+            `**📥 المُرسَل إليه:** ${recipient ? `${recipient.tag}` : `<@${pigeonData.recipientId}>`}\n` +
+            `**📅 التاريخ:** <t:${Math.floor(pigeonData.createdAt.getTime() / 1000)}:F>\n` +
+            `**📖 حالة القراءة:** ${pigeonData.read ? `✅ قُرئت <t:${Math.floor(pigeonData.readAt.getTime() / 1000)}:R>` : '🆕 جديدة'}\n\n` +
+            `**📜 محتوى الرسالة:**\n\`\`\`\n${pigeonData.content}\n\`\`\``
+          )
+          .setColor(THEME.ORANGE)
+          .setTimestamp()
+          .setFooter({ text: '🛡️ عرض إداري - يظهر المُرسِل الحقيقي' });
+        if (sender) readEmbed.setThumbnail(sender.displayAvatarURL());
+      } else {
+        // عرض المُرسَل إليه: المُرسِل مخفي
+        readEmbed = new EmbedBuilder()
+          .setTitle('📖 قراءة زاجل')
+          .setDescription(
+            `**📤 المُرسِل:** 🕵️ مجهول\n` +
+            `**📥 المُرسَل إليه:** ${recipient ? `${recipient.tag}` : `<@${pigeonData.recipientId}>`}\n` +
+            `**📅 التاريخ:** <t:${Math.floor(pigeonData.createdAt.getTime() / 1000)}:F>\n` +
+            `**📖 حالة القراءة:** ${pigeonData.read ? `✅ قُرئت <t:${Math.floor(pigeonData.readAt.getTime() / 1000)}:R>` : '🆕 جديدة'}\n\n` +
+            `**📜 محتوى الرسالة:**\n\`\`\`\n${pigeonData.content}\n\`\`\``
+          )
+          .setColor(THEME.ORANGE)
+          .setTimestamp()
+          .setFooter({ text: '🕊️ رسالة مجهولة المصدر' });
+      }
 
       if (isRecipient && !pigeonData.read) {
         pigeonData.read = true;
@@ -3362,10 +3362,9 @@ client.on('interactionCreate', async (interaction) => {
       if (received.length) {
         desc += '**📥 الزاجلات المُستلمة (آخر 10):**\n';
         for (const p of received) {
-          const s = await client.users.fetch(p.senderId).catch(() => null);
-          const name = s ? s.tag : `<@${p.senderId}>`;
+          // المُرسِل يبقى مجهول في السجل الشخصي
           const status = p.read ? '✅' : '🆕';
-          desc += `${status} من **${name}** — <t:${Math.floor(p.createdAt.getTime() / 1000)}:R>\n`;
+          desc += `${status} من **🕵️ مجهول** — <t:${Math.floor(p.createdAt.getTime() / 1000)}:R>\n`;
         }
         desc += '\n';
       }
@@ -3378,6 +3377,7 @@ client.on('interactionCreate', async (interaction) => {
           const status = p.read ? '✅ قُرئت' : '⏳ لم تُقرأ';
           desc += `${status} إلى **${name}** — <t:${Math.floor(p.createdAt.getTime() / 1000)}:R>\n`;
         }
+        desc += '\n> 🔒 **ملاحظة:** هويتك مخفية عن المُرسَل إليهم.';
       }
 
       return interaction.editReply({
