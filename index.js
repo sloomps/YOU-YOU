@@ -1,6 +1,7 @@
 // ============================================================
 // البوت الكامل - ثيم برتقالي وأسود - MongoDB
-// يشمل: رتب ذاتية + اقتراحات + تذاكر + تقييمات + حمام زاجل (مجهول)
+// يشمل: رتب ذاتية + اقتراحات + تذاكر + تقييمات + حمام زاجل
+// + نظام التقديمات الإدارية (ادارة / وسيط / قضاة)
 // ============================================================
 
 const {
@@ -92,6 +93,37 @@ const ConfigSchema = new mongoose.Schema({
   pigeonTitle: { type: String, default: '🕊️ حمام الزاجل' },
   pigeonDescription: { type: String, default: 'لإرسال رسالة خاصة عبر الحمام الزاجل، اضغط على الزر أدناه.' },
   pigeonImage: String,
+
+  // ✅ إعدادات نظام التقديمات
+  applyPanelTitle: { type: String, default: '📋 تقديمات الإدارة' },
+  applyPanelDescription: { type: String, default: 'اختر القسم الذي تريد التقديم عليه من الأزرار أدناه.\n\n**🔹 ادارة** — التقديم على الرتب الإدارية\n**🔹 وسيط** — التقديم على فريق الوسطاء\n**🔹 قضاة** — التقديم على فريق القضاة' },
+  applyPanelImage: String,
+  applyPanelChannel: String,
+  applyAdminRole: String,
+  applyWassetRole: String,
+  applyKadyRole: String,
+  applyAdminLog: String,
+  applyWassetLog: String,
+  applyKadyLog: String,
+  applyResultLog: String,
+  applyButton1Label: { type: String, default: 'ادارة' },
+  applyButton2Label: { type: String, default: 'وسيط' },
+  applyButton3Label: { type: String, default: 'قضاه' },
+  applyQ1_1: { type: String, default: 'الاسم' },
+  applyQ1_2: { type: String, default: 'العمر' },
+  applyQ1_3: { type: String, default: 'الخبرة' },
+  applyQ1_4: { type: String, default: 'عدد الساعات اليومية' },
+  applyQ1_5: { type: String, default: 'لماذا نختارك؟' },
+  applyQ2_1: { type: String, default: 'الاسم' },
+  applyQ2_2: { type: String, default: 'العمر' },
+  applyQ2_3: { type: String, default: 'الخبرة كوسيط' },
+  applyQ2_4: { type: String, default: 'عدد الساعات اليومية' },
+  applyQ2_5: { type: String, default: 'لماذا نختارك؟' },
+  applyQ3_1: { type: String, default: 'الاسم' },
+  applyQ3_2: { type: String, default: 'العمر' },
+  applyQ3_3: { type: String, default: 'الخبرة كقاضي' },
+  applyQ3_4: { type: String, default: 'عدد الساعات اليومية' },
+  applyQ3_5: { type: String, default: 'لماذا نختارك؟' },
 }, { timestamps: true });
 const Config = mongoose.model('Config', ConfigSchema);
 
@@ -215,6 +247,27 @@ const PigeonSchema = new mongoose.Schema({
 PigeonSchema.index({ guildId: 1, createdAt: -1 });
 const Pigeon = mongoose.model('Pigeon', PigeonSchema);
 
+// ✅ نموذج التقديمات
+const ApplicationSchema = new mongoose.Schema({
+  guildId: { type: String, required: true },
+  userId: { type: String, required: true },
+  type: { type: String, enum: ['edara', 'wasset', 'kady'], required: true },
+  answers: [{
+    question: String,
+    answer: String,
+  }],
+  status: { type: String, enum: ['pending', 'accepted', 'rejected'], default: 'pending' },
+  reviewedBy: String,
+  reviewedAt: Date,
+  messageId: String,
+  createdAt: { type: Date, default: Date.now },
+});
+ApplicationSchema.index({ guildId: 1, userId: 1, type: 1, createdAt: -1 });
+const Application = mongoose.model('Application', ApplicationSchema);
+
+// ============================================================
+// 🔚 نهاية الدفعة 1/4
+// ============================================================
 // ============================================================
 // ========== دوال مساعدة ==========
 // ============================================================
@@ -531,10 +584,46 @@ async function buildPigeonPanel(config) {
   return { embed, row };
 }
 
-// 🕊️ دالة البحث عن عضو بالاسم أو الآيدي (محسّنة)
+// ✅ دالة بناء بانل التقديمات
+async function buildApplyPanel(config) {
+  const title = config.applyPanelTitle || '📋 تقديمات الإدارة';
+  const text = config.applyPanelDescription || 'اختر القسم الذي تريد التقديم عليه من الأزرار أدناه.\n\n**🔹 ادارة** — التقديم على الرتب الإدارية\n**🔹 وسيط** — التقديم على فريق الوسطاء\n**🔹 قضاة** — التقديم على فريق القضاة';
+  const image = config.applyPanelImage || null;
+  const btn1 = config.applyButton1Label || 'ادارة';
+  const btn2 = config.applyButton2Label || 'وسيط';
+  const btn3 = config.applyButton3Label || 'قضاه';
+
+  const embed = new EmbedBuilder()
+    .setTitle(title)
+    .setDescription(text)
+    .setColor(THEME.ORANGE)
+    .setTimestamp()
+    .setFooter({ text: '📋 نظام التقديمات الإدارية' });
+
+  if (image) embed.setImage(image);
+
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId('ApplyButton1')
+      .setLabel(btn1)
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId('ApplyButton2')
+      .setLabel(btn2)
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId('ApplyButton3')
+      .setLabel(btn3)
+      .setStyle(ButtonStyle.Secondary)
+  );
+
+  return { embed, row };
+}
+
+// 🕊️ دالة البحث عن عضو (محسّنة)
 async function findMemberByName(guild, query) {
   if (!query || !guild) return null;
-  
+
   let cleaned = query.trim();
   if (cleaned.startsWith('@')) cleaned = cleaned.slice(1);
   cleaned = cleaned.split('#')[0].trim();
@@ -567,7 +656,7 @@ async function findMemberByName(guild, query) {
 
   try {
     const allMembers = await guild.members.fetch();
-    
+
     let found = allMembers.find(m =>
       m.user.username.toLowerCase() === lower ||
       (m.user.globalName && m.user.globalName.toLowerCase() === lower) ||
@@ -900,6 +989,10 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
   }
 });
 
+// ============================================================
+// ========== قائمة الأوامر الإدارية ==========
+// ============================================================
+
 function isAdminCommand(cmd) {
   const adminCmds = [
     'حظر', 'طرد', 'كتم', 'فك_كتم', 'تحذير', 'ابطال_تحذيرات',
@@ -909,6 +1002,9 @@ function isAdminCommand(cmd) {
   return adminCmds.includes(cmd);
 }
 
+// ============================================================
+// 🔚 نهاية الدفعة 2/4
+// ============================================================
 // ============================================================
 // ========== المعالج الرئيسي الموحد لـ messageCreate ==========
 // ============================================================
@@ -940,6 +1036,7 @@ client.on('messageCreate', async (message) => {
     };
 
     try {
+      // ========== أوامر العملة ==========
       if (cmd === 'رصيدي') {
         const eco = await getEconomy(guildId, userId);
         const embed = new EmbedBuilder()
@@ -1041,6 +1138,7 @@ client.on('messageCreate', async (message) => {
         return;
       }
 
+      // ========== الأوامر العامة ==========
       if (cmd === 'مساعدة') {
         const embed = new EmbedBuilder()
           .setTitle('📖 قائمة الأوامر')
@@ -1062,6 +1160,7 @@ client.on('messageCreate', async (message) => {
             { name: '⭐ التقييمات', value: '`تقييمات` (للمتحكمين)', inline: false },
             { name: '🎭 الرتب الذاتية', value: '`تعيين رتب` (للمتحكمين)', inline: false },
             { name: '🕊️ الحمام الزاجل', value: '`بانل_زاجل` (للمتحكمين) | `تعيين روم_زاجل #روم`', inline: false },
+            { name: '📋 التقديمات', value: '`بانل_تقديم` (للمتحكمين) | `نتيجة @عضو [ادارة/وسيط/قضاة] [قبول/رفض]`', inline: false },
             { name: '✏️ تغيير الاسم', value: '`تغيير_اسم`', inline: false },
             { name: 'ℹ️ معلومات', value: '`معلومات` `سيرفر` `بينق`', inline: false },
             { name: '⚙️ إعدادات', value: '`تعيين` (للمتحكمين)', inline: false },
@@ -1098,6 +1197,7 @@ client.on('messageCreate', async (message) => {
         return;
       }
 
+      // ========== نظام التحكم ==========
       if (cmd === 'متحكم') {
         if (!OWNER_ID || message.author.id !== OWNER_ID) {
           sentReply = await message.reply('❌ هذا الأمر للمالك فقط.');
@@ -1199,6 +1299,7 @@ client.on('messageCreate', async (message) => {
         return;
       }
 
+      // ========== تعيين ==========
       if (cmd === 'تعيين') {
         if (!(await hasPermission(message.member, guildId))) {
           sentReply = await message.reply('❌ تحتاج صلاحية متحكم.');
@@ -1222,6 +1323,7 @@ client.on('messageCreate', async (message) => {
               { name: '🎭 الرتب الذاتية', value: '`رتب` (لإدارة الرتب التفاعلية)' },
               { name: '⭐ التقييمات', value: '`تقييم [on/off]`، `قناة_تقييم #قناة`' },
               { name: '🕊️ الحمام الزاجل', value: '`روم_زاجل #روم`، `عنوان_زاجل نص`، `نص_زاجل نص`، `صورة_زاجل رابط`' },
+              { name: '📋 التقديمات', value: '`تقديم روم #روم`، `تقديم عنوان نص`، `تقديم وصف نص`، `تقديم صورة رابط`، `تقديم رتبة_ادارة @رتبة`، `تقديم رتبة_وسيط @رتبة`، `تقديم رتبة_قضاة @رتبة`، `تقديم لوق_ادارة #روم`، `تقديم لوق_وسيط #روم`، `تقديم لوق_قضاة #روم`، `تقديم لوق_نتائج #روم`', inline: false },
               { name: '🔔 رتب الإشعارات', value: '`صورة_رتب رابط`' },
               { name: '🖼️ عام', value: '`صورة_بنر رابط`، `صورة_عامة رابط`' },
               { name: '🚪 دور الدخول', value: '`دور_دخول @دور`' },
@@ -1234,6 +1336,222 @@ client.on('messageCreate', async (message) => {
           return;
         }
 
+        // ✅ إعدادات التقديمات
+        if (sub === 'تقديم') {
+          const option = args[1]?.toLowerCase();
+          const optionValue = args.slice(2).join(' ');
+
+          if (!option) {
+            const embed = new EmbedBuilder()
+              .setTitle('📋 إعدادات التقديمات')
+              .setColor(THEME.ORANGE)
+              .setDescription('لإعداد نظام التقديمات:')
+              .addFields(
+                { name: '📢 روم البانل', value: '`!تعيين تقديم روم #روم`', inline: false },
+                { name: '📝 عنوان البانل', value: '`!تعيين تقديم عنوان النص`', inline: false },
+                { name: '📄 وصف البانل', value: '`!تعيين تقديم وصف النص`', inline: false },
+                { name: '🖼️ صورة البانل', value: '`!تعيين تقديم صورة رابط`', inline: false },
+                { name: '🔘 نص زر 1', value: '`!تعيين تقديم زر1 النص`', inline: false },
+                { name: '🔘 نص زر 2', value: '`!تعيين تقديم زر2 النص`', inline: false },
+                { name: '🔘 نص زر 3', value: '`!تعيين تقديم زر3 النص`', inline: false },
+                { name: '🎭 رتبة الإدارة', value: '`!تعيين تقديم رتبة_ادارة @رتبة`', inline: false },
+                { name: '🎭 رتبة الوسيط', value: '`!تعيين تقديم رتبة_وسيط @رتبة`', inline: false },
+                { name: '🎭 رتبة القضاة', value: '`!تعيين تقديم رتبة_قضاة @رتبة`', inline: false },
+                { name: '📥 لوق تقديمات الإدارة', value: '`!تعيين تقديم لوق_ادارة #روم`', inline: false },
+                { name: '📥 لوق تقديمات الوسيط', value: '`!تعيين تقديم لوق_وسيط #روم`', inline: false },
+                { name: '📥 لوق تقديمات القضاة', value: '`!تعيين تقديم لوق_قضاة #روم`', inline: false },
+                { name: '📤 لوق النتائج', value: '`!تعيين تقديم لوق_نتائج #روم`', inline: false }
+              )
+              .setFooter({ text: 'استخدم الأوامر أعلاه لإعداد النظام' });
+            if (generalImage) embed.setImage(generalImage);
+            sentReply = await message.channel.send({ embeds: [embed] });
+            deleteAfter(sentReply);
+            return;
+          }
+
+          if (option === 'روم') {
+            const channel = message.mentions.channels.first();
+            if (!channel) {
+              sentReply = await message.reply('⚠️ منشن القناة.');
+              deleteAfter(sentReply);
+              return;
+            }
+            await updateGuildConfig(guildId, { applyPanelChannel: channel.id });
+            sentReply = await message.reply(`✅ تم تعيين روم البانل إلى ${channel}`);
+            deleteAfter(sentReply);
+            return;
+          }
+
+          if (option === 'عنوان') {
+            if (!optionValue) {
+              sentReply = await message.reply('⚠️ أدخل العنوان.');
+              deleteAfter(sentReply);
+              return;
+            }
+            await updateGuildConfig(guildId, { applyPanelTitle: optionValue });
+            sentReply = await message.reply(`✅ تم تعيين عنوان البانل: "${optionValue}"`);
+            deleteAfter(sentReply);
+            return;
+          }
+
+          if (option === 'وصف') {
+            if (!optionValue) {
+              sentReply = await message.reply('⚠️ أدخل الوصف.');
+              deleteAfter(sentReply);
+              return;
+            }
+            await updateGuildConfig(guildId, { applyPanelDescription: optionValue });
+            sentReply = await message.reply(`✅ تم تعيين وصف البانل:\n${optionValue}`);
+            deleteAfter(sentReply);
+            return;
+          }
+
+          if (option === 'صورة') {
+            if (!optionValue) {
+              await updateGuildConfig(guildId, { applyPanelImage: null });
+              sentReply = await message.reply('✅ تم إلغاء صورة البانل.');
+              deleteAfter(sentReply);
+              return;
+            }
+            await updateGuildConfig(guildId, { applyPanelImage: optionValue });
+            sentReply = await message.reply(`✅ تم تعيين صورة البانل: ${optionValue}`);
+            deleteAfter(sentReply);
+            return;
+          }
+
+          if (option === 'زر1') {
+            if (!optionValue) {
+              sentReply = await message.reply('⚠️ أدخل نص الزر.');
+              deleteAfter(sentReply);
+              return;
+            }
+            await updateGuildConfig(guildId, { applyButton1Label: optionValue });
+            sentReply = await message.reply(`✅ تم تعيين نص الزر 1: "${optionValue}"`);
+            deleteAfter(sentReply);
+            return;
+          }
+
+          if (option === 'زر2') {
+            if (!optionValue) {
+              sentReply = await message.reply('⚠️ أدخل نص الزر.');
+              deleteAfter(sentReply);
+              return;
+            }
+            await updateGuildConfig(guildId, { applyButton2Label: optionValue });
+            sentReply = await message.reply(`✅ تم تعيين نص الزر 2: "${optionValue}"`);
+            deleteAfter(sentReply);
+            return;
+          }
+
+          if (option === 'زر3') {
+            if (!optionValue) {
+              sentReply = await message.reply('⚠️ أدخل نص الزر.');
+              deleteAfter(sentReply);
+              return;
+            }
+            await updateGuildConfig(guildId, { applyButton3Label: optionValue });
+            sentReply = await message.reply(`✅ تم تعيين نص الزر 3: "${optionValue}"`);
+            deleteAfter(sentReply);
+            return;
+          }
+
+          if (option === 'رتبة_ادارة') {
+            const role = message.mentions.roles.first();
+            if (!role) {
+              sentReply = await message.reply('⚠️ منشن الرتبة.');
+              deleteAfter(sentReply);
+              return;
+            }
+            await updateGuildConfig(guildId, { applyAdminRole: role.id });
+            sentReply = await message.reply(`✅ تم تعيين رتبة الإدارة إلى ${role}`);
+            deleteAfter(sentReply);
+            return;
+          }
+
+          if (option === 'رتبة_وسيط') {
+            const role = message.mentions.roles.first();
+            if (!role) {
+              sentReply = await message.reply('⚠️ منشن الرتبة.');
+              deleteAfter(sentReply);
+              return;
+            }
+            await updateGuildConfig(guildId, { applyWassetRole: role.id });
+            sentReply = await message.reply(`✅ تم تعيين رتبة الوسيط إلى ${role}`);
+            deleteAfter(sentReply);
+            return;
+          }
+
+          if (option === 'رتبة_قضاة') {
+            const role = message.mentions.roles.first();
+            if (!role) {
+              sentReply = await message.reply('⚠️ منشن الرتبة.');
+              deleteAfter(sentReply);
+              return;
+            }
+            await updateGuildConfig(guildId, { applyKadyRole: role.id });
+            sentReply = await message.reply(`✅ تم تعيين رتبة القضاة إلى ${role}`);
+            deleteAfter(sentReply);
+            return;
+          }
+
+          if (option === 'لوق_ادارة') {
+            const channel = message.mentions.channels.first();
+            if (!channel) {
+              sentReply = await message.reply('⚠️ منشن القناة.');
+              deleteAfter(sentReply);
+              return;
+            }
+            await updateGuildConfig(guildId, { applyAdminLog: channel.id });
+            sentReply = await message.reply(`✅ تم تعيين لوق الإدارة إلى ${channel}`);
+            deleteAfter(sentReply);
+            return;
+          }
+
+          if (option === 'لوق_وسيط') {
+            const channel = message.mentions.channels.first();
+            if (!channel) {
+              sentReply = await message.reply('⚠️ منشن القناة.');
+              deleteAfter(sentReply);
+              return;
+            }
+            await updateGuildConfig(guildId, { applyWassetLog: channel.id });
+            sentReply = await message.reply(`✅ تم تعيين لوق الوسيط إلى ${channel}`);
+            deleteAfter(sentReply);
+            return;
+          }
+
+          if (option === 'لوق_قضاة') {
+            const channel = message.mentions.channels.first();
+            if (!channel) {
+              sentReply = await message.reply('⚠️ منشن القناة.');
+              deleteAfter(sentReply);
+              return;
+            }
+            await updateGuildConfig(guildId, { applyKadyLog: channel.id });
+            sentReply = await message.reply(`✅ تم تعيين لوق القضاة إلى ${channel}`);
+            deleteAfter(sentReply);
+            return;
+          }
+
+          if (option === 'لوق_نتائج') {
+            const channel = message.mentions.channels.first();
+            if (!channel) {
+              sentReply = await message.reply('⚠️ منشن القناة.');
+              deleteAfter(sentReply);
+              return;
+            }
+            await updateGuildConfig(guildId, { applyResultLog: channel.id });
+            sentReply = await message.reply(`✅ تم تعيين لوق النتائج إلى ${channel}`);
+            deleteAfter(sentReply);
+            return;
+          }
+
+          sentReply = await message.reply('⚠️ خيار غير معروف. استخدم `!تعيين تقديم` لعرض القائمة.');
+          deleteAfter(sentReply);
+          return;
+        }
+
+        // ===== إعدادات الزاجل =====
         if (sub === 'روم_زاجل') {
           const channel = message.mentions.channels.first();
           if (!channel) {
@@ -1285,6 +1603,7 @@ client.on('messageCreate', async (message) => {
           return;
         }
 
+        // ===== إدارة الرتب الذاتية =====
         if (sub === 'رتب') {
           const action = args[1]?.toLowerCase();
           const rest = args.slice(2);
@@ -1540,6 +1859,7 @@ client.on('messageCreate', async (message) => {
           return;
         }
 
+        // ===== باقي أوامر التعيين =====
         if (sub === 'ترحيب') {
           const channel = message.mentions.channels.first();
           if (!channel) {
@@ -2000,6 +2320,7 @@ client.on('messageCreate', async (message) => {
         return;
       }
 
+      // ========== بانل الاقتراحات ==========
       if (cmd === 'بانل_اقتراح') {
         if (!(await hasPermission(message.member, guildId))) {
           sentReply = await message.reply('❌ تحتاج صلاحية متحكم.');
@@ -2040,16 +2361,16 @@ client.on('messageCreate', async (message) => {
 
         try {
           await targetChannel.send({ embeds: [panel.embed], components: [panel.row] });
-          logToChannel(guildId, { 
-            title: '💡 إنشاء لوحة اقتراحات', 
-            color: THEME.ORANGE, 
-            description: `**${message.author}** أنشأ لوحة الاقتراحات في ${targetChannel}` 
+          logToChannel(guildId, {
+            title: '💡 إنشاء لوحة اقتراحات',
+            color: THEME.ORANGE,
+            description: `**${message.author}** أنشأ لوحة الاقتراحات في ${targetChannel}`
           });
-          sentReply = await message.reply({ 
+          sentReply = await message.reply({
             embeds: [new EmbedBuilder()
               .setColor(THEME.ORANGE)
               .setDescription(`✅ تم إنشاء لوحة الاقتراحات في ${targetChannel}`)
-            ] 
+            ]
           });
           deleteAfter(sentReply);
         } catch (err) {
@@ -2060,6 +2381,7 @@ client.on('messageCreate', async (message) => {
         return;
       }
 
+      // ========== بانل الزاجل ==========
       if (cmd === 'بانل_زاجل') {
         if (!(await hasPermission(message.member, guildId))) {
           sentReply = await message.reply('❌ تحتاج صلاحية متحكم.');
@@ -2098,6 +2420,158 @@ client.on('messageCreate', async (message) => {
         return;
       }
 
+      // ========== ✅ بانل التقديمات ==========
+      if (cmd === 'بانل_تقديم') {
+        if (!(await hasPermission(message.member, guildId))) {
+          sentReply = await message.reply('❌ تحتاج صلاحية متحكم.');
+          deleteAfter(sentReply);
+          return;
+        }
+
+        const updatedConfig = await getGuildConfig(guildId);
+        const panel = await buildApplyPanel(updatedConfig);
+
+        let targetChannel = message.channel;
+        if (updatedConfig.applyPanelChannel) {
+          const applyCh = message.guild.channels.cache.get(updatedConfig.applyPanelChannel);
+          if (applyCh) targetChannel = applyCh;
+        }
+
+        try {
+          await targetChannel.send({ embeds: [panel.embed], components: [panel.row] });
+          logToChannel(guildId, {
+            title: '📋 إنشاء بانل التقديمات',
+            color: THEME.ORANGE,
+            description: `**${message.author}** أنشأ بانل التقديمات في ${targetChannel}`
+          });
+          sentReply = await message.reply({
+            embeds: [new EmbedBuilder()
+              .setColor(THEME.ORANGE)
+              .setDescription(`✅ تم إنشاء بانل التقديمات في ${targetChannel}`)
+            ]
+          });
+          deleteAfter(sentReply);
+        } catch (err) {
+          console.error('❌ خطأ في إرسال بانل التقديمات:', err);
+          sentReply = await message.reply(`❌ فشل إنشاء البانل: ${err.message}`);
+          deleteAfter(sentReply);
+        }
+        return;
+      }
+
+      // ========== ✅ أمر النتيجة (قبول / رفض) ==========
+      if (cmd === 'نتيجة') {
+        if (!(await hasPermission(message.member, guildId))) {
+          sentReply = await message.reply('❌ تحتاج صلاحية متحكم.');
+          deleteAfter(sentReply);
+          return;
+        }
+
+        const member = message.mentions.members.first();
+        const type = args[1]?.toLowerCase();
+        const result = args[2]?.toLowerCase();
+
+        if (!member || !type || !result) {
+          sentReply = await message.reply('⚠️ الاستخدام: `!نتيجة @عضو [ادارة/وسيط/قضاة] [قبول/رفض]`');
+          deleteAfter(sentReply);
+          return;
+        }
+
+        if (!['ادارة', 'وسيط', 'قضاة', 'edara', 'wasset', 'kady'].includes(type)) {
+          sentReply = await message.reply('⚠️ القسم غير صحيح. اختر من: `ادارة` / `وسيط` / `قضاة`');
+          deleteAfter(sentReply);
+          return;
+        }
+
+        if (!['قبول', 'رفض', 'accept', 'reject'].includes(result)) {
+          sentReply = await message.reply('⚠️ النتيجة غير صحيحة. اختر من: `قبول` / `رفض`');
+          deleteAfter(sentReply);
+          return;
+        }
+
+        const typeNormalized = (type === 'ادارة' || type === 'edara') ? 'edara'
+                              : (type === 'وسيط' || type === 'wasset') ? 'wasset'
+                              : 'kady';
+        const resultNormalized = (result === 'قبول' || result === 'accept') ? 'accept' : 'reject';
+
+        const roleMap = {
+          edara: updatedConfigRole(updatedConfig, 'applyAdminRole'),
+          wasset: updatedConfigRole(updatedConfig, 'applyWassetRole'),
+          kady: updatedConfigRole(updatedConfig, 'applyKadyRole'),
+        };
+        const logMap = {
+          edara: updatedConfigRole(updatedConfig, 'applyAdminLog'),
+          wasset: updatedConfigRole(updatedConfig, 'applyWassetLog'),
+          kady: updatedConfigRole(updatedConfig, 'applyKadyLog'),
+        };
+        const labelMap = { edara: 'إداري', wasset: 'وسيط', kady: 'قاضي' };
+
+        const role = roleMap[typeNormalized] ? message.guild.roles.cache.get(roleMap[typeNormalized]) : null;
+        const logChannel = logMap[typeNormalized] ? message.guild.channels.cache.get(logMap[typeNormalized]) : null;
+        const resultLog = updatedConfig.applyResultLog ? message.guild.channels.cache.get(updatedConfig.applyResultLog) : null;
+
+        if (resultNormalized === 'accept') {
+          if (role && message.guild.members.me.permissions.has(PermissionsBitField.Flags.ManageRoles)) {
+            await member.roles.add(role).catch(() => {});
+          }
+
+          const embed = new EmbedBuilder()
+            .setAuthor({ name: member.user.username, iconURL: member.user.displayAvatarURL() })
+            .setTitle(`✅ ${member.user.username} مقبول`)
+            .setDescription(`**تم قبولك كـ${labelMap[typeNormalized]} في سيرفر ${message.guild.name}، حياك للتعليم والاختبار**`)
+            .setThumbnail(message.guild.iconURL())
+            .setFooter({ text: message.guild.name, iconURL: message.guild.iconURL() })
+            .setColor(0x00FF00)
+            .setTimestamp();
+
+          if (logChannel) await logChannel.send({ embeds: [embed] }).catch(() => {});
+          if (resultLog) await resultLog.send({ embeds: [embed] }).catch(() => {});
+          await member.send(`✅ تم قبولك كـ${labelMap[typeNormalized]} في السيرفر **${message.guild.name}**`).catch(() => {});
+
+          // تحديث سجل التقديمات في الداتابيس
+          await Application.findOneAndUpdate(
+            { guildId, userId: member.id, type: typeNormalized, status: 'pending' },
+            { status: 'accepted', reviewedBy: message.author.id, reviewedAt: new Date() },
+            { sort: { createdAt: -1 } }
+          ).catch(() => {});
+
+          sentReply = await message.channel.send({ embeds: [new EmbedBuilder().setColor(THEME.ORANGE).setDescription(`✅ تم قبول ${member} كـ${labelMap[typeNormalized]}`)] });
+          deleteAfter(sentReply);
+
+        } else {
+          const embed = new EmbedBuilder()
+            .setAuthor({ name: member.user.username, iconURL: member.user.displayAvatarURL() })
+            .setTitle(`❌ ${member.user.username} مرفوض`)
+            .setDescription(`**تم رفضك كـ${labelMap[typeNormalized]} في سيرفر ${message.guild.name}**`)
+            .setThumbnail(message.guild.iconURL())
+            .setFooter({ text: message.guild.name, iconURL: message.guild.iconURL() })
+            .setColor(0xFF0000)
+            .setTimestamp();
+
+          if (logChannel) await logChannel.send({ embeds: [embed] }).catch(() => {});
+          if (resultLog) await resultLog.send({ embeds: [embed] }).catch(() => {});
+          await member.send(`❌ تم رفضك كـ${labelMap[typeNormalized]} في السيرفر **${message.guild.name}**`).catch(() => {});
+
+          await Application.findOneAndUpdate(
+            { guildId, userId: member.id, type: typeNormalized, status: 'pending' },
+            { status: 'rejected', reviewedBy: message.author.id, reviewedAt: new Date() },
+            { sort: { createdAt: -1 } }
+          ).catch(() => {});
+
+          sentReply = await message.channel.send({ embeds: [new EmbedBuilder().setColor(THEME.ORANGE).setDescription(`❌ تم رفض ${member} كـ${labelMap[typeNormalized]}`)] });
+          deleteAfter(sentReply);
+        }
+
+        logToChannel(guildId, {
+          title: '📋 نتيجة تقديم',
+          color: resultNormalized === 'accept' ? 0x00FF00 : 0xFF0000,
+          description: `**العضو:** ${member.user.tag}\n**القسم:** ${labelMap[typeNormalized]}\n**النتيجة:** ${resultNormalized === 'accept' ? '✅ قبول' : '❌ رفض'}\n**بواسطة:** ${message.author}`,
+          footer: 'نظام التقديمات'
+        });
+        return;
+      }
+
+      // ========== بانل التذاكر ==========
       if (cmd === 'بانل') {
         if (!(await hasPermission(message.member, guildId))) {
           sentReply = await message.reply('❌ تحتاج صلاحية متحكم.');
@@ -2139,6 +2613,7 @@ client.on('messageCreate', async (message) => {
         return;
       }
 
+      // ========== أوامر عامة أخرى ==========
       if (cmd === 'عرض_تذكرة') {
         const settings = await getTicketSettings(guildId);
         const embed = new EmbedBuilder().setTitle('📋 إعدادات التذاكر').setColor(THEME.ORANGE)
@@ -2643,6 +3118,7 @@ client.on('messageCreate', async (message) => {
         return;
       }
 
+      // ========== أوامر الإشراف ==========
       if (cmd === 'حظر') {
         if (!(await hasPermission(message.member, guildId))) {
           sentReply = await message.reply('❌ تحتاج صلاحية متحكم.');
@@ -2987,6 +3463,7 @@ client.on('messageCreate', async (message) => {
     return;
   }
 
+  // ========== XP، الاقتصاد، الأوتو لاين، الردود التلقائية ==========
   try {
     const eco = await getEconomy(guildId, userId);
     eco.messageCount += 1;
@@ -3081,6 +3558,15 @@ client.on('messageCreate', async (message) => {
     console.error('❌ خطأ في معالجة الرسالة:', error);
   }
 });
+
+// ✅ دالة مساعدة للوصول لخصائص الـ config
+function updatedConfigRole(config, key) {
+  return config ? config[key] : null;
+}
+
+// ============================================================
+// 🔚 نهاية الدفعة 3/4
+// ============================================================
 // ============================================================
 // ========== معالج التفاعلات ==========
 // ============================================================
@@ -3092,7 +3578,6 @@ client.on('interactionCreate', async (interaction) => {
     // ========== 🕊️ معالجات الزاجل ==========
     // ============================================================
 
-    // فتح modal الإرسال
     if (interaction.isButton() && interaction.customId === 'pigeon_send') {
       const modal = new ModalBuilder()
         .setCustomId('pigeon_send_modal')
@@ -3122,7 +3607,6 @@ client.on('interactionCreate', async (interaction) => {
       return await interaction.showModal(modal);
     }
 
-    // معالجة إرسال الزاجل (المُرسِل مخفي)
     if (interaction.isModalSubmit() && interaction.customId === 'pigeon_send_modal') {
       await interaction.deferReply({ ephemeral: true });
 
@@ -3163,7 +3647,6 @@ client.on('interactionCreate', async (interaction) => {
         });
       }
 
-      // ✅ إيمبد الروم: المُرسِل مخفي (🕵️ مجهول)
       const pigeonEmbed = new EmbedBuilder()
         .setTitle('🕊️ وصلتك رسالة زاجل')
         .setDescription(
@@ -3174,7 +3657,6 @@ client.on('interactionCreate', async (interaction) => {
           `> 🔒 **ملاحظة:** هوية المُرسِل مخفية عن الجميع (بما فيهم أنت)، ما عدا الإدارة.`
         )
         .setColor(THEME.ORANGE)
-        .setThumbnail('https://cdn.discordapp.com/emojis/1234567890.png') // يمكنك تغييرها أو حذفها
         .setTimestamp()
         .setFooter({ text: '🕊️ نظام الحمام الزاجل - مُرسِل مجهول' });
 
@@ -3202,7 +3684,6 @@ client.on('interactionCreate', async (interaction) => {
         });
       }
 
-      // ✅ حفظ المُرسِل الحقيقي في الداتابيس (لأغراض إدارية فقط)
       try {
         await Pigeon.create({
           guildId: guild.id,
@@ -3215,7 +3696,6 @@ client.on('interactionCreate', async (interaction) => {
         console.error('❌ خطأ في حفظ الزاجل:', e);
       }
 
-      // ✅ DM للمُرسَل إليه: بدون اسم المُرسِل
       try {
         const dmEmbed = new EmbedBuilder()
           .setTitle('🕊️ وصلتك رسالة زاجل جديدة!')
@@ -3230,7 +3710,6 @@ client.on('interactionCreate', async (interaction) => {
         await target.send({ embeds: [dmEmbed] }).catch(() => {});
       } catch (e) {}
 
-      // ✅ اللوق يحفظ المُرسِل الحقيقي
       logToChannel(guild.id, {
         title: '🕊️ زاجل جديد',
         color: THEME.ORANGE,
@@ -3247,7 +3726,6 @@ client.on('interactionCreate', async (interaction) => {
       });
     }
 
-    // قراءة الزاجل
     if (interaction.isButton() && interaction.customId.startsWith('pigeon_read_')) {
       const recipientId = interaction.customId.replace('pigeon_read_', '');
 
@@ -3289,12 +3767,8 @@ client.on('interactionCreate', async (interaction) => {
       const sender = await client.users.fetch(pigeonData.senderId).catch(() => null);
       const recipient = await client.users.fetch(pigeonData.recipientId).catch(() => null);
 
-      // ✅ إيمبد القراءة:
-      // - للمُرسَل إليه: المُرسِل = 🕵️ مجهول
-      // - للإدارة: المُرسِل = الحقيقي
       let readEmbed;
       if (isAdmin && !isRecipient) {
-        // عرض إداري: يظهر اسم المُرسِل الحقيقي
         readEmbed = new EmbedBuilder()
           .setTitle('📖 قراءة زاجل (عرض إداري)')
           .setDescription(
@@ -3309,7 +3783,6 @@ client.on('interactionCreate', async (interaction) => {
           .setFooter({ text: '🛡️ عرض إداري - يظهر المُرسِل الحقيقي' });
         if (sender) readEmbed.setThumbnail(sender.displayAvatarURL());
       } else {
-        // عرض المُرسَل إليه: المُرسِل مخفي
         readEmbed = new EmbedBuilder()
           .setTitle('📖 قراءة زاجل')
           .setDescription(
@@ -3336,7 +3809,6 @@ client.on('interactionCreate', async (interaction) => {
       });
     }
 
-    // رسائلي السابقة
     if (interaction.isButton() && interaction.customId === 'pigeon_myhistory') {
       await interaction.deferReply({ ephemeral: true });
 
@@ -3362,7 +3834,6 @@ client.on('interactionCreate', async (interaction) => {
       if (received.length) {
         desc += '**📥 الزاجلات المُستلمة (آخر 10):**\n';
         for (const p of received) {
-          // المُرسِل يبقى مجهول في السجل الشخصي
           const status = p.read ? '✅' : '🆕';
           desc += `${status} من **🕵️ مجهول** — <t:${Math.floor(p.createdAt.getTime() / 1000)}:R>\n`;
         }
@@ -3469,7 +3940,6 @@ client.on('interactionCreate', async (interaction) => {
       });
     }
 
-    // أزرار الاقتراحات
     if (interaction.isButton() && ['suggest_accept', 'suggest_reject', 'suggest_comment'].includes(interaction.customId)) {
       if (!(await hasPermission(interaction.member, interaction.guild.id))) {
         return interaction.reply({ content: '❌ هذا الزر للمشرفين فقط.', ephemeral: true });
@@ -3515,7 +3985,289 @@ client.on('interactionCreate', async (interaction) => {
       await interaction.followUp({ content: `📌 ${action} بواسطة ${interaction.user}`, ephemeral: true });
     }
 
-    // رتب الإشعارات (القديمة)
+    // ============================================================
+    // ========== ✅ معالجات التقديمات ==========
+    // ============================================================
+
+    // زر ادارة
+    if (interaction.isButton() && interaction.customId === 'ApplyButton1') {
+      const applyModal1 = new ModalBuilder()
+        .setCustomId('applyModal1')
+        .setTitle('تقديم ادارة')
+        .addComponents(
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+              .setCustomId('question1')
+              .setLabel(config.applyQ1_1 || 'الاسم')
+              .setStyle(TextInputStyle.Short)
+              .setRequired(true)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+              .setCustomId('question2')
+              .setLabel(config.applyQ1_2 || 'العمر')
+              .setStyle(TextInputStyle.Short)
+              .setRequired(true)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+              .setCustomId('question3')
+              .setLabel(config.applyQ1_3 || 'الخبرة')
+              .setStyle(TextInputStyle.Short)
+              .setRequired(true)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+              .setCustomId('question4')
+              .setLabel(config.applyQ1_4 || 'عدد الساعات اليومية')
+              .setStyle(TextInputStyle.Short)
+              .setRequired(true)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+              .setCustomId('question5')
+              .setLabel(config.applyQ1_5 || 'لماذا نختارك؟')
+              .setStyle(TextInputStyle.Paragraph)
+              .setRequired(true)
+          )
+        );
+      return await interaction.showModal(applyModal1);
+    }
+
+    // زر وسيط
+    if (interaction.isButton() && interaction.customId === 'ApplyButton2') {
+      const applyModal2 = new ModalBuilder()
+        .setCustomId('applyModal2')
+        .setTitle('تقديم وسيط')
+        .addComponents(
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+              .setCustomId('question1')
+              .setLabel(config.applyQ2_1 || 'الاسم')
+              .setStyle(TextInputStyle.Short)
+              .setRequired(true)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+              .setCustomId('question2')
+              .setLabel(config.applyQ2_2 || 'العمر')
+              .setStyle(TextInputStyle.Short)
+              .setRequired(true)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+              .setCustomId('question3')
+              .setLabel(config.applyQ2_3 || 'الخبرة كوسيط')
+              .setStyle(TextInputStyle.Short)
+              .setRequired(true)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+              .setCustomId('question4')
+              .setLabel(config.applyQ2_4 || 'عدد الساعات اليومية')
+              .setStyle(TextInputStyle.Short)
+              .setRequired(true)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+              .setCustomId('question5')
+              .setLabel(config.applyQ2_5 || 'لماذا نختارك؟')
+              .setStyle(TextInputStyle.Paragraph)
+              .setRequired(true)
+          )
+        );
+      return await interaction.showModal(applyModal2);
+    }
+
+    // زر قضاة
+    if (interaction.isButton() && interaction.customId === 'ApplyButton3') {
+      const applyModal3 = new ModalBuilder()
+        .setCustomId('applyModal3')
+        .setTitle('تقديم قضاه')
+        .addComponents(
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+              .setCustomId('question1')
+              .setLabel(config.applyQ3_1 || 'الاسم')
+              .setStyle(TextInputStyle.Short)
+              .setRequired(true)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+              .setCustomId('question2')
+              .setLabel(config.applyQ3_2 || 'العمر')
+              .setStyle(TextInputStyle.Short)
+              .setRequired(true)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+              .setCustomId('question3')
+              .setLabel(config.applyQ3_3 || 'الخبرة كقاضي')
+              .setStyle(TextInputStyle.Short)
+              .setRequired(true)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+              .setCustomId('question4')
+              .setLabel(config.applyQ3_4 || 'عدد الساعات اليومية')
+              .setStyle(TextInputStyle.Short)
+              .setRequired(true)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+              .setCustomId('question5')
+              .setLabel(config.applyQ3_5 || 'لماذا نختارك؟')
+              .setStyle(TextInputStyle.Paragraph)
+              .setRequired(true)
+          )
+        );
+      return await interaction.showModal(applyModal3);
+    }
+
+    // استقبال modal التقديم — ادارة
+    if (interaction.isModalSubmit() && interaction.customId === 'applyModal1') {
+      const guildId = interaction.guild.id;
+      const config = await getGuildConfig(guildId);
+
+      const answers = [
+        { q: config.applyQ1_1 || 'الاسم', a: interaction.fields.getTextInputValue('question1') },
+        { q: config.applyQ1_2 || 'العمر', a: interaction.fields.getTextInputValue('question2') },
+        { q: config.applyQ1_3 || 'الخبرة', a: interaction.fields.getTextInputValue('question3') },
+        { q: config.applyQ1_4 || 'عدد الساعات اليومية', a: interaction.fields.getTextInputValue('question4') },
+        { q: config.applyQ1_5 || 'لماذا نختارك؟', a: interaction.fields.getTextInputValue('question5') },
+      ];
+
+      await Application.create({
+        guildId,
+        userId: interaction.user.id,
+        type: 'edara',
+        answers,
+        status: 'pending',
+      });
+
+      const channelLog = config.applyAdminLog ? interaction.guild.channels.cache.get(config.applyAdminLog) : null;
+      if (channelLog) {
+        const embed = new EmbedBuilder()
+          .setAuthor({ name: interaction.user.username, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
+          .setFooter({ text: interaction.user.username, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
+          .setThumbnail(interaction.user.displayAvatarURL({ dynamic: true }))
+          .setColor(THEME.BLACK)
+          .setTimestamp()
+          .addFields(
+            { name: answers[0].q, value: `\`${answers[0].a}\``, inline: true },
+            { name: answers[1].q, value: `\`${answers[1].a}\``, inline: true },
+            { name: answers[2].q, value: `\`${answers[2].a}\``, inline: true },
+            { name: answers[3].q, value: `\`${answers[3].a}\``, inline: true },
+            { name: answers[4].q, value: `\`${answers[4].a}\``, inline: true },
+            { name: '\u200B', value: '\u200B' },
+            { name: `${interaction.user.username}`, value: `\`${interaction.user.id}\``, inline: true }
+          );
+        await channelLog.send({ embeds: [embed] }).catch(() => {});
+      }
+
+      return interaction.reply({
+        content: `✅ تم إرسال طلب تقديمك كـ**اداري**، انتظر النتيجة.`,
+        ephemeral: true
+      });
+    }
+
+    // استقبال modal التقديم — وسيط
+    if (interaction.isModalSubmit() && interaction.customId === 'applyModal2') {
+      const guildId = interaction.guild.id;
+      const config = await getGuildConfig(guildId);
+
+      const answers = [
+        { q: config.applyQ2_1 || 'الاسم', a: interaction.fields.getTextInputValue('question1') },
+        { q: config.applyQ2_2 || 'العمر', a: interaction.fields.getTextInputValue('question2') },
+        { q: config.applyQ2_3 || 'الخبرة كوسيط', a: interaction.fields.getTextInputValue('question3') },
+        { q: config.applyQ2_4 || 'عدد الساعات اليومية', a: interaction.fields.getTextInputValue('question4') },
+        { q: config.applyQ2_5 || 'لماذا نختارك؟', a: interaction.fields.getTextInputValue('question5') },
+      ];
+
+      await Application.create({
+        guildId,
+        userId: interaction.user.id,
+        type: 'wasset',
+        answers,
+        status: 'pending',
+      });
+
+      const channelLog = config.applyWassetLog ? interaction.guild.channels.cache.get(config.applyWassetLog) : null;
+      if (channelLog) {
+        const embed = new EmbedBuilder()
+          .setAuthor({ name: interaction.user.username, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
+          .setFooter({ text: interaction.user.username, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
+          .setThumbnail(interaction.user.displayAvatarURL({ dynamic: true }))
+          .setColor(THEME.BLACK)
+          .setTimestamp()
+          .addFields(
+            { name: answers[0].q, value: `\`${answers[0].a}\``, inline: true },
+            { name: answers[1].q, value: `\`${answers[1].a}\``, inline: true },
+            { name: answers[2].q, value: `\`${answers[2].a}\``, inline: true },
+            { name: answers[3].q, value: `\`${answers[3].a}\``, inline: true },
+            { name: answers[4].q, value: `\`${answers[4].a}\``, inline: true },
+            { name: '\u200B', value: '\u200B' },
+            { name: `${interaction.user.username}`, value: `\`${interaction.user.id}\``, inline: true }
+          );
+        await channelLog.send({ embeds: [embed] }).catch(() => {});
+      }
+
+      return interaction.reply({
+        content: `✅ تم إرسال طلب تقديمك كـ**وسيط**، انتظر النتيجة.`,
+        ephemeral: true
+      });
+    }
+
+    // استقبال modal التقديم — قضاة
+    if (interaction.isModalSubmit() && interaction.customId === 'applyModal3') {
+      const guildId = interaction.guild.id;
+      const config = await getGuildConfig(guildId);
+
+      const answers = [
+        { q: config.applyQ3_1 || 'الاسم', a: interaction.fields.getTextInputValue('question1') },
+        { q: config.applyQ3_2 || 'العمر', a: interaction.fields.getTextInputValue('question2') },
+        { q: config.applyQ3_3 || 'الخبرة كقاضي', a: interaction.fields.getTextInputValue('question3') },
+        { q: config.applyQ3_4 || 'عدد الساعات اليومية', a: interaction.fields.getTextInputValue('question4') },
+        { q: config.applyQ3_5 || 'لماذا نختارك؟', a: interaction.fields.getTextInputValue('question5') },
+      ];
+
+      await Application.create({
+        guildId,
+        userId: interaction.user.id,
+        type: 'kady',
+        answers,
+        status: 'pending',
+      });
+
+      const channelLog = config.applyKadyLog ? interaction.guild.channels.cache.get(config.applyKadyLog) : null;
+      if (channelLog) {
+        const embed = new EmbedBuilder()
+          .setAuthor({ name: interaction.user.username, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
+          .setFooter({ text: interaction.user.username, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
+          .setThumbnail(interaction.user.displayAvatarURL({ dynamic: true }))
+          .setColor(THEME.BLACK)
+          .setTimestamp()
+          .addFields(
+            { name: answers[0].q, value: `\`${answers[0].a}\``, inline: true },
+            { name: answers[1].q, value: `\`${answers[1].a}\``, inline: true },
+            { name: answers[2].q, value: `\`${answers[2].a}\``, inline: true },
+            { name: answers[3].q, value: `\`${answers[3].a}\``, inline: true },
+            { name: answers[4].q, value: `\`${answers[4].a}\``, inline: true },
+            { name: '\u200B', value: '\u200B' },
+            { name: `${interaction.user.username}`, value: `\`${interaction.user.id}\``, inline: true }
+          );
+        await channelLog.send({ embeds: [embed] }).catch(() => {});
+      }
+
+      return interaction.reply({
+        content: `✅ تم إرسال طلب تقديمك كـ**قاضي**، انتظر النتيجة.`,
+        ephemeral: true
+      });
+    }
+
+    // ============================================================
+    // ========== رتب الإشعارات (القديمة) ==========
+    // ============================================================
     if (interaction.isButton() && ['role_game', 'role_event', 'role_ajr'].includes(interaction.customId)) {
       if (!interaction.guild.members.me.permissions.has(PermissionsBitField.Flags.ManageRoles)) {
         return interaction.reply({ content: '❌ لا أملك صلاحية إدارة الرتب.', ephemeral: true });
@@ -3634,7 +4386,9 @@ client.on('interactionCreate', async (interaction) => {
       }
     }
 
-    // زر تغيير الاسم
+    // ============================================================
+    // ========== زر تغيير الاسم ==========
+    // ============================================================
     if (interaction.isButton() && interaction.customId === 'open_name_modal') {
       const userId = interaction.user.id;
       const last = await getNameCooldown(userId);
