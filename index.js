@@ -2,7 +2,6 @@
 // البوت الكامل - ثيم برتقالي وأسود - MongoDB
 // يشمل: رتب ذاتية + تذاكر + تقييمات + حمام زاجل
 // + تقديمات ديناميكية + نظام حماية + اقتراحات Threads
-// بدون نظام OG
 // ============================================================
 
 const {
@@ -91,7 +90,6 @@ const ConfigSchema = new mongoose.Schema({
   applyPanelImage: String,
   applyPanelChannel: String,
   applyResultLog: String,
-  // ✅ إعدادات الحماية
   protectionEnabled: { type: Boolean, default: false },
   antiSpamEnabled: { type: Boolean, default: false },
   antiSpamMax: { type: Number, default: 5 },
@@ -100,7 +98,6 @@ const ConfigSchema = new mongoose.Schema({
   antiEveryoneEnabled: { type: Boolean, default: false },
   protectionAction: { type: String, enum: ['delete', 'delete_warn', 'delete_mute', 'delete_warn_mute'], default: 'delete_warn' },
   protectionBypassRoles: [String],
-  // ✅ اقتراحات
   suggestionsChannel: String,
 }, { timestamps: true });
 const Config = mongoose.model('Config', ConfigSchema);
@@ -270,7 +267,6 @@ const ApplySectionSchema = new mongoose.Schema({
 ApplySectionSchema.index({ guildId: 1, name: 1 }, { unique: true });
 const ApplySection = mongoose.model('ApplySection', ApplySectionSchema);
 
-// ✅ نموذج تتبع الرسائل المتكررة (Anti-Spam)
 const SpamTrackerSchema = new mongoose.Schema({
   guildId: { type: String, required: true },
   userId: { type: String, required: true },
@@ -279,7 +275,6 @@ const SpamTrackerSchema = new mongoose.Schema({
 SpamTrackerSchema.index({ guildId: 1, userId: 1 }, { unique: true });
 const SpamTracker = mongoose.model('SpamTracker', SpamTrackerSchema);
 
-// ✅ نموذج الاقتراحات
 const SuggestionSchema = new mongoose.Schema({
   guildId: { type: String, required: true },
   userId: { type: String, required: true },
@@ -463,7 +458,6 @@ async function removeApplySection(guildId, name) {
   return result.deletedCount > 0;
 }
 
-// ✅ دوال الحماية
 async function getBannedWords(guildId) {
   return await BannedWord.find({ guildId }).sort({ createdAt: -1 });
 }
@@ -558,7 +552,6 @@ async function applyProtectionAction(interactionOrMessage, member, guildId, conf
   return { dmSent, muted };
 }
 
-// ✅ لوحة تحكم الحماية
 async function buildProtectionPanel(guildId) {
   const config = await getGuildConfig(guildId);
   const bannedWords = await getBannedWords(guildId);
@@ -1133,23 +1126,40 @@ client.on('messageCreate', async (message) => {
   // ========== 💡 نظام الاقتراحات الجديد (Threads) ==========
   // ============================================================
   if (config.suggestionsChannel && message.channel.id === config.suggestionsChannel) {
-    // ✅ استثناء المتحكمين (عشان يقدرون يكتبون أوامر في الروم)
-    const isControllerMember = await hasPermission(message.member, guildId);
-    const isAdmin = message.member.permissions.has(PermissionsBitField.Flags.Administrator);
+    console.log(`💡 [الاقتراحات] رسالة في روم الاقتراحات من ${message.author.tag}: "${message.content.slice(0, 50)}"`);
 
-    if (!isControllerMember && !isAdmin) {
+    let isControllerMember = false;
+    let isAdmin = false;
+    try {
+      if (message.member) {
+        isControllerMember = await hasPermission(message.member, guildId);
+        isAdmin = message.member.permissions.has(PermissionsBitField.Flags.Administrator);
+      }
+    } catch (e) {
+      console.error('❌ خطأ في فحص الصلاحيات:', e);
+    }
+
+    console.log(`💡 [الاقتراحات] isController: ${isControllerMember}, isAdmin: ${isAdmin}, isCommand: ${isCommand}`);
+
+    // ✅ استثناء المتحكمين والأوامر
+    if (!isControllerMember && !isAdmin && !isCommand) {
       try {
         const content = message.content;
+        if (!content || content.trim().length === 0) {
+          console.log('⚠️ [الاقتراحات] محتوى فارغ، تجاهل');
+          return;
+        }
 
-        // احفظ محتوى الرسالة قبل الحذف
         const authorId = message.author.id;
         const authorTag = message.author.tag;
         const authorAvatar = message.author.displayAvatarURL({ dynamic: true });
         const authorMention = `${message.author}`;
         const messageTimestamp = new Date();
 
-        // احذف الرسالة
-        await message.delete().catch(() => {});
+        console.log(`💡 [الاقتراحات] سيتم حذف الرسالة...`);
+        await message.delete().catch((err) => {
+          console.error('❌ فشل حذف الرسالة:', err);
+        });
 
         // ✅ إيمبد الاقتراح
         const suggestEmbed = new EmbedBuilder()
@@ -1164,33 +1174,35 @@ client.on('messageCreate', async (message) => {
           .setTimestamp()
           .setFooter({ text: '📋 صوّت في الـ Thread بالتفاعلات ✅ / ❌' });
 
-        // ✅ أرسل الإيمبد
+        console.log(`💡 [الاقتراحات] سيتم إرسال الإيمبد...`);
         const sentMsg = await message.channel.send({ embeds: [suggestEmbed] });
+        console.log(`✅ [الاقتراحات] تم إرسال الإيمبد: ${sentMsg.id}`);
 
         // ✅ افتح Thread
         let thread;
         try {
           thread = await sentMsg.startThread({
             name: 'رايك',
-            autoArchiveDuration: 1440, // 24 ساعة
+            autoArchiveDuration: 1440,
             reason: 'نقاش الاقتراح',
           });
+          console.log(`✅ [الاقتراحات] تم إنشاء الـ Thread: ${thread.id}`);
         } catch (e) {
-          console.error('❌ فشل إنشاء الـ Thread:', e);
+          console.error('❌ [الاقتراحات] فشل إنشاء الـ Thread:', e);
         }
 
         if (thread) {
-          // ✅ أرسل ردين للتصويت
-          const yesMsg = await thread.send('**✅ موافق** — تفاعل للتصويت بالموافقة');
-          const noMsg = await thread.send('**❌ غير موافق** — تفاعل للتصويت بالرفض');
-
-          // ✅ أضف التفاعلات
           try {
+            const yesMsg = await thread.send('**✅ موافق** — تفاعل للتصويت بالموافقة');
+            const noMsg = await thread.send('**❌ غير موافق** — تفاعل للتصويت بالرفض');
+
             await yesMsg.react('✅');
             await noMsg.react('❌');
-          } catch (e) {}
+            console.log(`✅ [الاقتراحات] تم إرسال التصويتات في الـ Thread`);
+          } catch (e) {
+            console.error('❌ [الاقتراحات] فشل إرسال التصويتات:', e);
+          }
 
-          // ✅ احفظ الاقتراح في الداتابيس
           try {
             await Suggestion.create({
               guildId,
@@ -1201,12 +1213,12 @@ client.on('messageCreate', async (message) => {
               yesCount: 0,
               noCount: 0,
             });
+            console.log(`✅ [الاقتراحات] تم الحفظ في الداتابيس`);
           } catch (e) {
-            console.error('❌ خطأ في حفظ الاقتراح:', e);
+            console.error('❌ [الاقتراحات] خطأ في حفظ الاقتراح:', e);
           }
         }
 
-        // ✅ سجل في اللوق
         logToChannel(guildId, {
           title: '💡 اقتراح جديد',
           color: THEME.ORANGE,
@@ -1218,6 +1230,10 @@ client.on('messageCreate', async (message) => {
         console.error('❌ خطأ في معالجة الاقتراح:', error);
       }
       return;
+    } else {
+      console.log(`⏭️ [الاقتراحات] تم تجاهل الرسالة (متحكم / إداري / أمر)`);
+      // المتحكمين والإداريين: نكمل للأوامر أو الحماية (لا نرجع)
+      if (!isCommand) return;
     }
   }
 
@@ -1229,7 +1245,6 @@ client.on('messageCreate', async (message) => {
       const member = message.member;
       if (!member) return;
 
-      // استثناء روم الاقتراحات
       if (config.suggestionsChannel && message.channel.id === config.suggestionsChannel) return;
 
       const isExempt = await hasPermission(member, guildId);
@@ -1377,7 +1392,6 @@ client.on('messageCreate', async (message) => {
         }
         const panel = await buildProtectionPanel(guildId);
         sentReply = await message.channel.send({ embeds: [panel.embed], components: panel.rows });
-        // ✅ ما نستدعي deleteAfter — الرسالة تبقى
         return;
       }
 
@@ -1437,7 +1451,6 @@ client.on('messageCreate', async (message) => {
         );
 
         sentReply = await message.channel.send({ embeds: [embed], components: [selectRow] });
-        // ✅ ما نستدعي deleteAfter
         return;
       }
 
@@ -1686,7 +1699,7 @@ client.on('messageCreate', async (message) => {
             return;
           }
           await updateGuildConfig(guildId, { suggestionsChannel: channel.id });
-          sentReply = await message.reply(`✅ تم تعيين روم الاقتراحات إلى ${channel}\n\n> 📌 الآن أي رسالة في هذا الروم ستتحول تلقائياً إلى اقتراح في Thread.`);
+          sentReply = await message.reply(`✅ تم تعيين روم الاقتراحات إلى ${channel}\n\n> 📌 الآن أي رسالة في هذا الروم ستتحول تلقائياً إلى اقتراح في Thread.\n> ⚠️ تأكد من أن البوت عنده صلاحيات: \`Manage Messages\`, \`Create Public Threads\`, \`Send Messages in Threads\``);
           deleteAfter(sentReply);
           return;
         }
@@ -4595,6 +4608,9 @@ client.on('interactionCreate', async (interaction) => {
       return await interaction.showModal(modal);
     }
 
+    // ============================================================
+    // ========== ✅ زر إغلاق التذكرة (بدون ملخص) ==========
+    // ============================================================
     if (interaction.isButton() && interaction.customId === 'close_ticket') {
       if (!(await hasPermission(interaction.member, interaction.guild.id))) {
         return interaction.reply({ content: '❌ إغلاق التذاكر متاح للمتحكمين فقط!', ephemeral: true });
@@ -4604,28 +4620,13 @@ client.on('interactionCreate', async (interaction) => {
 
       const config = await getGuildConfig(interaction.guild.id);
       let ticketOwnerId = null;
-      let createdDate = new Date();
-      let messageCount = 0;
       try {
         const allMsgs = await channel.messages.fetch({ limit: 100 });
         const firstMsg = allMsgs.last();
         if (firstMsg && firstMsg.mentions.users.first()) ticketOwnerId = firstMsg.mentions.users.first().id;
-        if (firstMsg) createdDate = firstMsg.createdAt;
-        messageCount = allMsgs.size;
       } catch (e) {}
 
       const sectionName = channel.name.replace('تذكرة-', '').split('-')[0] || 'غير معروف';
-
-      const summaryEmbed = new EmbedBuilder()
-        .setTitle('📋 ملخص التذكرة المغلقة').setColor(THEME.ORANGE)
-        .addFields(
-          { name: '📌 القسم', value: sectionName, inline: true },
-          { name: '👤 صاحب التذكرة', value: ticketOwnerId ? `<@${ticketOwnerId}>` : 'غير معروف', inline: true },
-          { name: '🆔 معرف القناة', value: channel.id, inline: true },
-          { name: '📅 تاريخ الإنشاء', value: createdDate.toLocaleString('ar-EG'), inline: true },
-          { name: '💬 عدد الرسائل', value: `${messageCount}`, inline: true },
-          { name: '🔒 أغلق بواسطة', value: `${interaction.user}`, inline: true }
-        ).setTimestamp().setFooter({ text: 'تم إغلاق التذكرة' });
 
       if (ticketOwnerId && config.ticketRatingEnabled !== false) {
         try {
@@ -4633,15 +4634,23 @@ client.on('interactionCreate', async (interaction) => {
         } catch (e) {}
       }
 
+      // ✅ فقط التقييم — بدون ملخص
       if (ticketOwnerId && config.ticketRatingEnabled !== false) {
         try {
           const owner = await interaction.guild.members.fetch(ticketOwnerId);
-          await owner.send({ embeds: [summaryEmbed] }).catch(() => {});
 
           const ratingEmbed = new EmbedBuilder()
             .setTitle('⭐ قيّم تجربتك مع الدعم')
-            .setDescription(`مرحباً ${owner}!\n\nتم إغلاق تذكرتك في قسم **${sectionName}**.\nنرجو منك تقييم جودة الخدمة.\n\n**⭐ = سيء جداً**\n**⭐⭐⭐⭐⭐ = ممتاز**`)
-            .setColor(THEME.ORANGE).setThumbnail(interaction.guild.iconURL() || null).setTimestamp()
+            .setDescription(
+              `مرحباً ${owner}!\n\n` +
+              `تم إغلاق تذكرتك في قسم **${sectionName}**.\n` +
+              `نرجو منك تقييم جودة الخدمة.\n\n` +
+              `**⭐ = سيء جداً**\n` +
+              `**⭐⭐⭐⭐⭐ = ممتاز**`
+            )
+            .setColor(THEME.ORANGE)
+            .setThumbnail(interaction.guild.iconURL() || null)
+            .setTimestamp()
             .setFooter({ text: `تذكرة ${sectionName} • ${interaction.guild.name}` });
 
           const ratingRow = new ActionRowBuilder().addComponents(
@@ -4655,7 +4664,9 @@ client.on('interactionCreate', async (interaction) => {
             new ButtonBuilder().setCustomId(`rate_ticket_comment_${ticketOwnerId}_${channel.id}_${interaction.guild.id}`).setLabel('💬 إضافة تعليق (اختياري)').setStyle(ButtonStyle.Primary)
           );
           await owner.send({ embeds: [ratingEmbed], components: [ratingRow, commentRow] }).catch(() => {});
-        } catch (e) {}
+        } catch (e) {
+          console.error('❌ فشل إرسال DM لصاحب التذكرة:', e.message);
+        }
       }
 
       logToChannel(interaction.guild.id, { title: '🔒 إغلاق تذكرة', color: THEME.BLACK, description: `**المستخدم:** ${interaction.user}\n**القناة:** ${channel.name}\n**صاحب التذكرة:** ${ticketOwnerId ? `<@${ticketOwnerId}>` : 'غير معروف'}`, footer: 'نظام التذاكر' });
@@ -4787,7 +4798,6 @@ client.on('interactionCreate', async (interaction) => {
             new StringSelectMenuBuilder().setCustomId('ticket_menu').setPlaceholder('📌 اختر القسم...').addOptions(options)
           );
 
-          // ✅ تعديل البانل بنفسه (بدون حذف)
           await interaction.message.edit({ components: [row] }).catch(() => {});
 
           return interaction.editReply({
