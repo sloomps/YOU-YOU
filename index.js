@@ -1,7 +1,5 @@
 // ============================================================
 // البوت الكامل - ثيم برتقالي وأسود - MongoDB
-// يشمل: رتب ذاتية + تذاكر + تقييمات + حمام زاجل
-// + تقديمات ديناميكية + نظام حماية + اقتراحات Threads
 // ============================================================
 
 const {
@@ -86,7 +84,7 @@ const ConfigSchema = new mongoose.Schema({
   pigeonDescription: { type: String, default: 'لإرسال رسالة خاصة عبر الحمام الزاجل، اضغط على الزر أدناه.' },
   pigeonImage: String,
   applyPanelTitle: { type: String, default: '📋 التقديمات الإدارية' },
-  applyPanelDescription: { type: String, default: 'اختر القسم الذي ترغب بالتقديم عليه من القائمة المنسدلة أدناه.\n\n**🖱️ بمجرد اختيارك للقسم، ستفتح لك استمارة التقديم.**' },
+  applyPanelDescription: { type: String, default: 'اختر القسم الذي ترغب بالتقديم عليه من القائمة المنسدلة أدناه.' },
   applyPanelImage: String,
   applyPanelChannel: String,
   applyResultLog: String,
@@ -137,7 +135,7 @@ const TicketSettingsSchema = new mongoose.Schema({
     roleId: String,
     emoji: { type: String, default: '📌' },
   }],
-  text: { type: String, default: 'مرحباً بكم جميعاً في قسم التذاكر، لفتح تذكرة أرجو ضغط على القائمة أدناه واختيار التذكرة التي تناسبك.' },
+  text: { type: String, default: 'مرحباً بكم جميعاً في قسم التذاكر، لفتح تذكرة أرجو ضغط على القائمة أدناه.' },
   image: { type: String, default: 'https://i.imgur.com/GkKqN3G.png' },
 });
 const TicketSettings = mongoose.model('TicketSettings', TicketSettingsSchema);
@@ -151,6 +149,7 @@ const TicketSchema = new mongoose.Schema({
   claimedAt: Date,
   addedMembers: [String],
   status: { type: String, enum: ['open', 'closed'], default: 'open' },
+  closed: { type: Boolean, default: false }, // ✅ منع تكرار الإغلاق
   createdAt: { type: Date, default: Date.now },
 });
 const Ticket = mongoose.model('Ticket', TicketSchema);
@@ -552,6 +551,18 @@ async function applyProtectionAction(interactionOrMessage, member, guildId, conf
   return { dmSent, muted };
 }
 
+// ============================================================
+// ========== 🎨 ألوان الأزرار الموحدة ==========
+// ============================================================
+// أحمر للأزرار الإيجابية (تفعيل، إضافة، حفظ، إلخ)
+// رمادي للأزرار الثانوية (رجوع، إلغاء، عرض، إلخ)
+
+const BTN = {
+  MAIN: ButtonStyle.Danger,      // 🔴 للأزرار الرئيسية
+  ALT: ButtonStyle.Secondary,    // ⚫ للأزرار الثانوية
+};
+
+// ✅ لوحة تحكم الحماية
 async function buildProtectionPanel(guildId) {
   const config = await getGuildConfig(guildId);
   const bannedWords = await getBannedWords(guildId);
@@ -583,17 +594,17 @@ async function buildProtectionPanel(guildId) {
     .setFooter({ text: 'نظام الحماية • استخدم الأزرار أدناه للتحكم' });
 
   const row1 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('prot_toggle_main').setLabel(config.protectionEnabled ? '🛑 تعطيل الحماية' : '✅ تفعيل الحماية').setStyle(config.protectionEnabled ? ButtonStyle.Danger : ButtonStyle.Success),
-    new ButtonBuilder().setCustomId('prot_toggle_spam').setLabel(config.antiSpamEnabled ? '🔁 إيقاف منع التكرار' : '🔁 تفعيل منع التكرار').setStyle(config.antiSpamEnabled ? ButtonStyle.Danger : ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('prot_toggle_link').setLabel(config.antiLinkEnabled ? '🔗 إيقاف منع الروابط' : '🔗 تفعيل منع الروابط').setStyle(config.antiLinkEnabled ? ButtonStyle.Danger : ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('prot_toggle_everyone').setLabel(config.antiEveryoneEnabled ? '📢 إيقاف منع المنشن' : '📢 تفعيل منع المنشن').setStyle(config.antiEveryoneEnabled ? ButtonStyle.Danger : ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('prot_toggle_main').setLabel(config.protectionEnabled ? '🛑 تعطيل الحماية' : '✅ تفعيل الحماية').setStyle(BTN.MAIN),
+    new ButtonBuilder().setCustomId('prot_toggle_spam').setLabel(config.antiSpamEnabled ? '🔁 إيقاف منع التكرار' : '🔁 تفعيل منع التكرار').setStyle(BTN.MAIN),
+    new ButtonBuilder().setCustomId('prot_toggle_link').setLabel(config.antiLinkEnabled ? '🔗 إيقاف منع الروابط' : '🔗 تفعيل منع الروابط').setStyle(BTN.MAIN),
+    new ButtonBuilder().setCustomId('prot_toggle_everyone').setLabel(config.antiEveryoneEnabled ? '📢 إيقاف منع المنشن' : '📢 تفعيل منع المنشن').setStyle(BTN.MAIN),
   );
 
   const row2 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('prot_banned_words').setLabel('🚫 إدارة الكلمات المحظورة').setStyle(ButtonStyle.Primary).setEmoji('🚫'),
-    new ButtonBuilder().setCustomId('prot_action').setLabel('⚖️ الإجراء عند المخالفة').setStyle(ButtonStyle.Primary).setEmoji('⚖️'),
-    new ButtonBuilder().setCustomId('prot_bypass_roles').setLabel('🎭 الرتب المستثناة').setStyle(ButtonStyle.Primary).setEmoji('🎭'),
-    new ButtonBuilder().setCustomId('prot_settings').setLabel('⚙️ إعدادات متقدمة').setStyle(ButtonStyle.Secondary).setEmoji('⚙️'),
+    new ButtonBuilder().setCustomId('prot_banned_words').setLabel('🚫 إدارة الكلمات المحظورة').setStyle(BTN.ALT).setEmoji('🚫'),
+    new ButtonBuilder().setCustomId('prot_action').setLabel('⚖️ الإجراء عند المخالفة').setStyle(BTN.ALT).setEmoji('⚖️'),
+    new ButtonBuilder().setCustomId('prot_bypass_roles').setLabel('🎭 الرتب المستثناة').setStyle(BTN.ALT).setEmoji('🎭'),
+    new ButtonBuilder().setCustomId('prot_settings').setLabel('⚙️ إعدادات متقدمة').setStyle(BTN.ALT).setEmoji('⚙️'),
   );
 
   return { embed, rows: [row1, row2] };
@@ -732,8 +743,8 @@ async function buildPigeonPanel(config) {
   if (image) embed.setImage(image);
 
   const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('pigeon_send').setLabel('📤 إرسال زاجل').setStyle(ButtonStyle.Primary).setEmoji('🕊️'),
-    new ButtonBuilder().setCustomId('pigeon_myhistory').setLabel('📜 رسائلي السابقة').setStyle(ButtonStyle.Secondary)
+    new ButtonBuilder().setCustomId('pigeon_send').setLabel('📤 إرسال زاجل').setStyle(BTN.MAIN).setEmoji('🕊️'),
+    new ButtonBuilder().setCustomId('pigeon_myhistory').setLabel('📜 رسائلي السابقة').setStyle(BTN.ALT)
   );
 
   return { embed, row };
@@ -741,7 +752,7 @@ async function buildPigeonPanel(config) {
 
 async function buildApplyPanel(guildId, config) {
   const title = config.applyPanelTitle || '📋 التقديمات الإدارية';
-  const text = config.applyPanelDescription || 'اختر القسم الذي ترغب بالتقديم عليه من القائمة المنسدلة أدناه.\n\n**🖱️ بمجرد اختيارك للقسم، ستفتح لك استمارة التقديم.**';
+  const text = config.applyPanelDescription || 'اختر القسم الذي ترغب بالتقديم عليه من القائمة المنسدلة أدناه.';
   const image = config.applyPanelImage || null;
 
   const sections = await getApplySections(guildId);
@@ -1128,25 +1139,12 @@ client.on('messageCreate', async (message) => {
   if (config.suggestionsChannel && message.channel.id === config.suggestionsChannel) {
     console.log(`💡 [الاقتراحات] رسالة في روم الاقتراحات من ${message.author.tag}: "${message.content.slice(0, 50)}"`);
 
-    let isControllerMember = false;
-    let isAdmin = false;
-    try {
-      if (message.member) {
-        isControllerMember = await hasPermission(message.member, guildId);
-        isAdmin = message.member.permissions.has(PermissionsBitField.Flags.Administrator);
-      }
-    } catch (e) {
-      console.error('❌ خطأ في فحص الصلاحيات:', e);
-    }
-
-    console.log(`💡 [الاقتراحات] isController: ${isControllerMember}, isAdmin: ${isAdmin}, isCommand: ${isCommand}`);
-
-    // ✅ استثناء المتحكمين والأوامر
-    if (!isControllerMember && !isAdmin && !isCommand) {
+    // ✅ استثناء الأوامر فقط (اللي تبدأ بـ !)
+    // كل الأعضاء بمن فيهم المتحكمين يتحولوا
+    if (!isCommand) {
       try {
         const content = message.content;
         if (!content || content.trim().length === 0) {
-          console.log('⚠️ [الاقتراحات] محتوى فارغ، تجاهل');
           return;
         }
 
@@ -1157,11 +1155,8 @@ client.on('messageCreate', async (message) => {
         const messageTimestamp = new Date();
 
         console.log(`💡 [الاقتراحات] سيتم حذف الرسالة...`);
-        await message.delete().catch((err) => {
-          console.error('❌ فشل حذف الرسالة:', err);
-        });
+        await message.delete().catch(() => {});
 
-        // ✅ إيمبد الاقتراح
         const suggestEmbed = new EmbedBuilder()
           .setAuthor({ name: authorTag, iconURL: authorAvatar })
           .setTitle('💡 اقتراح جديد')
@@ -1174,7 +1169,6 @@ client.on('messageCreate', async (message) => {
           .setTimestamp()
           .setFooter({ text: '📋 صوّت في الـ Thread بالتفاعلات ✅ / ❌' });
 
-        console.log(`💡 [الاقتراحات] سيتم إرسال الإيمبد...`);
         const sentMsg = await message.channel.send({ embeds: [suggestEmbed] });
         console.log(`✅ [الاقتراحات] تم إرسال الإيمبد: ${sentMsg.id}`);
 
@@ -1213,7 +1207,6 @@ client.on('messageCreate', async (message) => {
               yesCount: 0,
               noCount: 0,
             });
-            console.log(`✅ [الاقتراحات] تم الحفظ في الداتابيس`);
           } catch (e) {
             console.error('❌ [الاقتراحات] خطأ في حفظ الاقتراح:', e);
           }
@@ -1230,11 +1223,8 @@ client.on('messageCreate', async (message) => {
         console.error('❌ خطأ في معالجة الاقتراح:', error);
       }
       return;
-    } else {
-      console.log(`⏭️ [الاقتراحات] تم تجاهل الرسالة (متحكم / إداري / أمر)`);
-      // المتحكمين والإداريين: نكمل للأوامر أو الحماية (لا نرجع)
-      if (!isCommand) return;
     }
+    // إذا كان أمر (!) → نكمل للتحقق من الأوامر (ما نرجع)
   }
 
   // ============================================================
@@ -1245,6 +1235,7 @@ client.on('messageCreate', async (message) => {
       const member = message.member;
       if (!member) return;
 
+      // استثناء روم الاقتراحات
       if (config.suggestionsChannel && message.channel.id === config.suggestionsChannel) return;
 
       const isExempt = await hasPermission(member, guildId);
@@ -1391,7 +1382,7 @@ client.on('messageCreate', async (message) => {
           return;
         }
         const panel = await buildProtectionPanel(guildId);
-        sentReply = await message.channel.send({ embeds: [panel.embed], components: panel.rows });
+        await message.channel.send({ embeds: [panel.embed], components: panel.rows });
         return;
       }
 
@@ -1450,7 +1441,7 @@ client.on('messageCreate', async (message) => {
             .addOptions(options)
         );
 
-        sentReply = await message.channel.send({ embeds: [embed], components: [selectRow] });
+        await message.channel.send({ embeds: [embed], components: [selectRow] });
         return;
       }
 
@@ -2802,7 +2793,7 @@ client.on('messageCreate', async (message) => {
         }
         const embed = new EmbedBuilder().setTitle('✏️ تغيير الاسم').setDescription('اضغط على الزر أدناه لتغيير اسمك.').setColor(THEME.ORANGE).setFooter({ text: 'يمكنك تغيير اسمك مرة كل 5 ساعات.' });
         if (generalImage) embed.setImage(generalImage);
-        const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('open_name_modal').setLabel('✏️ تغيير الاسم').setStyle(ButtonStyle.Primary));
+        const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('open_name_modal').setLabel('✏️ تغيير الاسم').setStyle(BTN.MAIN));
         sentReply = await message.channel.send({ embeds: [embed], components: [row] });
         deleteAfter(sentReply);
         return;
@@ -3615,10 +3606,10 @@ client.on('interactionCreate', async (interaction) => {
         .setFooter({ text: 'اضغط على الأزرار أدناه للتحكم' });
 
       const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('prot_word_add').setLabel('➕ إضافة كلمة').setStyle(ButtonStyle.Success).setEmoji('➕'),
-        new ButtonBuilder().setCustomId('prot_word_remove').setLabel('🗑️ حذف كلمة').setStyle(ButtonStyle.Danger).setEmoji('🗑️'),
-        new ButtonBuilder().setCustomId('prot_word_clear').setLabel('🧹 حذف الكل').setStyle(ButtonStyle.Danger).setEmoji('🧹'),
-        new ButtonBuilder().setCustomId('prot_refresh').setLabel('🔄 رجوع').setStyle(ButtonStyle.Secondary).setEmoji('🔄'),
+        new ButtonBuilder().setCustomId('prot_word_add').setLabel('➕ إضافة كلمة').setStyle(BTN.MAIN).setEmoji('➕'),
+        new ButtonBuilder().setCustomId('prot_word_remove').setLabel('🗑️ حذف كلمة').setStyle(BTN.MAIN).setEmoji('🗑️'),
+        new ButtonBuilder().setCustomId('prot_word_clear').setLabel('🧹 حذف الكل').setStyle(BTN.MAIN).setEmoji('🧹'),
+        new ButtonBuilder().setCustomId('prot_refresh').setLabel('🔄 رجوع').setStyle(BTN.ALT).setEmoji('🔄'),
       );
 
       return interaction.update({ embeds: [embed], components: [row] });
@@ -3707,7 +3698,7 @@ client.on('interactionCreate', async (interaction) => {
       );
 
       const backRow = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('prot_refresh').setLabel('🔙 رجوع للوحة الحماية').setStyle(ButtonStyle.Secondary)
+        new ButtonBuilder().setCustomId('prot_refresh').setLabel('🔙 رجوع للوحة الحماية').setStyle(BTN.ALT)
       );
 
       return interaction.update({ embeds: [embed], components: [selectRow, backRow] });
@@ -3748,9 +3739,9 @@ client.on('interactionCreate', async (interaction) => {
         .setTimestamp();
 
       const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('prot_bypass_add').setLabel('➕ إضافة رتبة').setStyle(ButtonStyle.Success).setEmoji('➕'),
-        new ButtonBuilder().setCustomId('prot_bypass_remove').setLabel('🗑️ حذف رتبة').setStyle(ButtonStyle.Danger).setEmoji('🗑️'),
-        new ButtonBuilder().setCustomId('prot_refresh').setLabel('🔄 رجوع').setStyle(ButtonStyle.Secondary).setEmoji('🔄'),
+        new ButtonBuilder().setCustomId('prot_bypass_add').setLabel('➕ إضافة رتبة').setStyle(BTN.MAIN).setEmoji('➕'),
+        new ButtonBuilder().setCustomId('prot_bypass_remove').setLabel('🗑️ حذف رتبة').setStyle(BTN.MAIN).setEmoji('🗑️'),
+        new ButtonBuilder().setCustomId('prot_refresh').setLabel('🔄 رجوع').setStyle(BTN.ALT).setEmoji('🔄'),
       );
 
       return interaction.update({ embeds: [embed], components: [row] });
@@ -3826,8 +3817,8 @@ client.on('interactionCreate', async (interaction) => {
         .setTimestamp();
 
       const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('prot_settings_edit').setLabel('✏️ تعديل الإعدادات').setStyle(ButtonStyle.Primary).setEmoji('✏️'),
-        new ButtonBuilder().setCustomId('prot_refresh').setLabel('🔙 رجوع').setStyle(ButtonStyle.Secondary)
+        new ButtonBuilder().setCustomId('prot_settings_edit').setLabel('✏️ تعديل الإعدادات').setStyle(BTN.MAIN).setEmoji('✏️'),
+        new ButtonBuilder().setCustomId('prot_refresh').setLabel('🔙 رجوع').setStyle(BTN.ALT)
       );
 
       return interaction.update({ embeds: [embed], components: [row] });
@@ -3920,17 +3911,17 @@ client.on('interactionCreate', async (interaction) => {
         embed.setTimestamp().setFooter({ text: 'اختر إجراءً من الأزرار أدناه' });
 
         const row1 = new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId(`apply_section_addq:${section.name}`).setLabel('➕ إضافة سؤال').setStyle(ButtonStyle.Success).setEmoji('➕'),
-          new ButtonBuilder().setCustomId(`apply_section_delq:${section.name}`).setLabel('🗑️ حذف سؤال').setStyle(ButtonStyle.Danger).setEmoji('🗑️'),
+          new ButtonBuilder().setCustomId(`apply_section_addq:${section.name}`).setLabel('➕ إضافة سؤال').setStyle(BTN.MAIN).setEmoji('➕'),
+          new ButtonBuilder().setCustomId(`apply_section_delq:${section.name}`).setLabel('🗑️ حذف سؤال').setStyle(BTN.MAIN).setEmoji('🗑️'),
         );
         const row2 = new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId(`apply_section_img:${section.name}`).setLabel('🖼️ صورة القسم').setStyle(ButtonStyle.Primary).setEmoji('🖼️'),
-          new ButtonBuilder().setCustomId(`apply_section_role:${section.name}`).setLabel('🎭 رتبة القبول').setStyle(ButtonStyle.Primary).setEmoji('🎭'),
-          new ButtonBuilder().setCustomId(`apply_section_log:${section.name}`).setLabel('📥 روم اللوق').setStyle(ButtonStyle.Primary).setEmoji('📥'),
+          new ButtonBuilder().setCustomId(`apply_section_img:${section.name}`).setLabel('🖼️ صورة القسم').setStyle(BTN.ALT).setEmoji('🖼️'),
+          new ButtonBuilder().setCustomId(`apply_section_role:${section.name}`).setLabel('🎭 رتبة القبول').setStyle(BTN.ALT).setEmoji('🎭'),
+          new ButtonBuilder().setCustomId(`apply_section_log:${section.name}`).setLabel('📥 روم اللوق').setStyle(BTN.ALT).setEmoji('📥'),
         );
         const row3 = new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId(`apply_section_delete:${section.name}`).setLabel('🗑️ حذف القسم').setStyle(ButtonStyle.Danger),
-          new ButtonBuilder().setCustomId('apply_admin_back').setLabel('🔙 رجوع للقائمة').setStyle(ButtonStyle.Secondary)
+          new ButtonBuilder().setCustomId(`apply_section_delete:${section.name}`).setLabel('🗑️ حذف القسم').setStyle(BTN.MAIN),
+          new ButtonBuilder().setCustomId('apply_admin_back').setLabel('🔙 رجوع للقائمة').setStyle(BTN.ALT)
         );
 
         return interaction.update({ embeds: [embed], components: [row1, row2, row3] });
@@ -4323,7 +4314,7 @@ client.on('interactionCreate', async (interaction) => {
       if (config.pigeonImage) pigeonEmbed.setImage(config.pigeonImage);
 
       const readRow = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId(`pigeon_read_${target.id}`).setLabel('📖 قراءة زاجل').setStyle(ButtonStyle.Primary).setEmoji('🕊️')
+        new ButtonBuilder().setCustomId(`pigeon_read_${target.id}`).setLabel('📖 قراءة زاجل').setStyle(BTN.MAIN).setEmoji('🕊️')
       );
 
       let sentMsg;
@@ -4609,9 +4600,12 @@ client.on('interactionCreate', async (interaction) => {
     }
 
     // ============================================================
-    // ========== ✅ زر إغلاق التذكرة (بدون ملخص) ==========
+    // ========== ✅ زر إغلاق التذكرة (بدون تكرار) ==========
     // ============================================================
     if (interaction.isButton() && interaction.customId === 'close_ticket') {
+      // ✅ منع التكرار
+      if (interaction.replied || interaction.deferred) return;
+
       if (!(await hasPermission(interaction.member, interaction.guild.id))) {
         return interaction.reply({ content: '❌ إغلاق التذاكر متاح للمتحكمين فقط!', ephemeral: true });
       }
@@ -4619,6 +4613,20 @@ client.on('interactionCreate', async (interaction) => {
       if (!channel.name.startsWith('تذكرة-')) return interaction.reply({ content: '⚠️ هذه ليست قناة تذكرة.', ephemeral: true });
 
       const config = await getGuildConfig(interaction.guild.id);
+      const ticketData = await getTicketByChannel(interaction.guild.id, channel.id);
+
+      // ✅ منع التكرار — إذا كانت مغلقة بالفعل
+      if (ticketData && ticketData.closed) {
+        return interaction.reply({ content: '⚠️ هذه التذكرة مغلقة بالفعل.', ephemeral: true });
+      }
+
+      // ✅ نحفظ حالة الإغلاق
+      if (ticketData) {
+        ticketData.closed = true;
+        ticketData.status = 'closed';
+        await ticketData.save().catch(() => {});
+      }
+
       let ticketOwnerId = null;
       try {
         const allMsgs = await channel.messages.fetch({ limit: 100 });
@@ -4654,14 +4662,14 @@ client.on('interactionCreate', async (interaction) => {
             .setFooter({ text: `تذكرة ${sectionName} • ${interaction.guild.name}` });
 
           const ratingRow = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId(`rate_ticket_1_${ticketOwnerId}_${channel.id}_${interaction.guild.id}`).setLabel('⭐').setStyle(ButtonStyle.Danger),
-            new ButtonBuilder().setCustomId(`rate_ticket_2_${ticketOwnerId}_${channel.id}_${interaction.guild.id}`).setLabel('⭐⭐').setStyle(ButtonStyle.Danger),
-            new ButtonBuilder().setCustomId(`rate_ticket_3_${ticketOwnerId}_${channel.id}_${interaction.guild.id}`).setLabel('⭐⭐⭐').setStyle(ButtonStyle.Secondary),
-            new ButtonBuilder().setCustomId(`rate_ticket_4_${ticketOwnerId}_${channel.id}_${interaction.guild.id}`).setLabel('⭐⭐⭐⭐').setStyle(ButtonStyle.Success),
-            new ButtonBuilder().setCustomId(`rate_ticket_5_${ticketOwnerId}_${channel.id}_${interaction.guild.id}`).setLabel('⭐⭐⭐⭐⭐').setStyle(ButtonStyle.Success)
+            new ButtonBuilder().setCustomId(`rate_ticket_1_${ticketOwnerId}_${channel.id}_${interaction.guild.id}`).setLabel('⭐').setStyle(BTN.MAIN),
+            new ButtonBuilder().setCustomId(`rate_ticket_2_${ticketOwnerId}_${channel.id}_${interaction.guild.id}`).setLabel('⭐⭐').setStyle(BTN.MAIN),
+            new ButtonBuilder().setCustomId(`rate_ticket_3_${ticketOwnerId}_${channel.id}_${interaction.guild.id}`).setLabel('⭐⭐⭐').setStyle(BTN.MAIN),
+            new ButtonBuilder().setCustomId(`rate_ticket_4_${ticketOwnerId}_${channel.id}_${interaction.guild.id}`).setLabel('⭐⭐⭐⭐').setStyle(BTN.MAIN),
+            new ButtonBuilder().setCustomId(`rate_ticket_5_${ticketOwnerId}_${channel.id}_${interaction.guild.id}`).setLabel('⭐⭐⭐⭐⭐').setStyle(BTN.MAIN)
           );
           const commentRow = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId(`rate_ticket_comment_${ticketOwnerId}_${channel.id}_${interaction.guild.id}`).setLabel('💬 إضافة تعليق (اختياري)').setStyle(ButtonStyle.Primary)
+            new ButtonBuilder().setCustomId(`rate_ticket_comment_${ticketOwnerId}_${channel.id}_${interaction.guild.id}`).setLabel('💬 إضافة تعليق (اختياري)').setStyle(BTN.ALT)
           );
           await owner.send({ embeds: [ratingEmbed], components: [ratingRow, commentRow] }).catch(() => {});
         } catch (e) {
@@ -4670,7 +4678,7 @@ client.on('interactionCreate', async (interaction) => {
       }
 
       logToChannel(interaction.guild.id, { title: '🔒 إغلاق تذكرة', color: THEME.BLACK, description: `**المستخدم:** ${interaction.user}\n**القناة:** ${channel.name}\n**صاحب التذكرة:** ${ticketOwnerId ? `<@${ticketOwnerId}>` : 'غير معروف'}`, footer: 'نظام التذاكر' });
-      await Ticket.findOneAndUpdate({ guildId: interaction.guild.id, channelId: channel.id }, { status: 'closed' }).catch(() => {});
+
       await interaction.reply({ content: '🔒 جاري إغلاق التذكرة...', ephemeral: true });
       setTimeout(async () => { await channel.delete().catch(() => {}); }, 3000);
     }
@@ -4832,7 +4840,7 @@ client.on('interactionCreate', async (interaction) => {
           ]
         });
 
-        await Ticket.create({ guildId: guild.id, channelId: channel.id, ownerId: member.id, sectionName: selected, status: 'open' });
+        await Ticket.create({ guildId: guild.id, channelId: channel.id, ownerId: member.id, sectionName: selected, status: 'open', closed: false });
 
         const embed = new EmbedBuilder()
           .setTitle(`🎫 تذكرة - ${selected}`)
@@ -4841,7 +4849,7 @@ client.on('interactionCreate', async (interaction) => {
         if (generalImage) embed.setThumbnail(generalImage);
 
         let mention = section.roleId ? `<@&${section.roleId}>` : '';
-        const closeRow = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('close_ticket').setLabel('🔒 إغلاق التذكرة').setStyle(ButtonStyle.Danger));
+        const closeRow = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('close_ticket').setLabel('🔒 إغلاق التذكرة').setStyle(BTN.MAIN));
         const controlRow = buildTicketControlRow();
 
         await channel.send({ content: `${member} ${mention}`.trim(), embeds: [embed], components: [closeRow, controlRow] });
